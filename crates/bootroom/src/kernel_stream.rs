@@ -17,14 +17,21 @@ use tokio_util::io::ReaderStream;
 ///
 /// # Errors
 ///
-/// Returns `404 NOT_FOUND` if the kernel file is missing or cannot be opened
-/// (race against startup validation in `01-04`).
+/// Returns `404 NOT_FOUND` if the kernel file is missing (race against
+/// startup validation in `01-04`), `403 FORBIDDEN` on permission denied,
+/// or `500 INTERNAL_SERVER_ERROR` on any other I/O failure. Errors are
+/// also logged server-side via `tracing::warn!`. WR-02.
 pub async fn kernel_stream(
     State(s): State<Arc<AppState>>,
 ) -> Result<Response, StatusCode> {
-    let f = tokio::fs::File::open(&s.kernel)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let f = tokio::fs::File::open(&s.kernel).await.map_err(|e| {
+        tracing::warn!(error = %e, path = %s.kernel.display(), "kernel open failed");
+        match e.kind() {
+            std::io::ErrorKind::NotFound => StatusCode::NOT_FOUND,
+            std::io::ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    })?;
     let stream = ReaderStream::new(f);
     let body = Body::from_stream(stream);
     Ok((

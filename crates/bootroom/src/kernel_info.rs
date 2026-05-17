@@ -6,8 +6,21 @@ use crate::state::AppState;
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::{sync::Arc, time::UNIX_EPOCH};
+use std::{io::ErrorKind, sync::Arc, time::UNIX_EPOCH};
 use tokio::io::AsyncReadExt;
+
+/// WR-02: map an `io::Error` to a meaningful HTTP status instead of
+/// coercing everything to 404. Permission denied → 403; any other I/O
+/// failure → 500. The error is logged via `tracing::warn!` server-side
+/// so the operator can diagnose even though the browser only sees a
+/// status code.
+fn io_to_status(e: &std::io::Error) -> StatusCode {
+    match e.kind() {
+        ErrorKind::NotFound => StatusCode::NOT_FOUND,
+        ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
 
 #[derive(Debug, Serialize, Clone)]
 pub struct KernelInfo {
@@ -24,16 +37,19 @@ pub struct KernelInfo {
 ///
 /// # Errors
 ///
-/// Returns `404 NOT_FOUND` if the kernel file is missing or unreadable
-/// (the file was validated at startup, but may have been deleted since).
-/// Returns `500 INTERNAL_SERVER_ERROR` if an I/O error occurs mid-stream.
+/// Returns `404 NOT_FOUND` if the kernel file is missing (validated at
+/// startup, but may have been deleted since), `403 FORBIDDEN` if the
+/// process lost read permission, or `500 INTERNAL_SERVER_ERROR` for
+/// any other I/O failure (mid-stream or otherwise). All errors are
+/// also logged server-side via `tracing::warn!`.
 #[allow(clippy::cast_possible_wrap)] // mtime well within i64 range until year 292277
 pub async fn kernel_info(
     State(s): State<Arc<AppState>>,
 ) -> Result<Json<KernelInfo>, StatusCode> {
-    let meta = tokio::fs::metadata(&s.kernel)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let meta = tokio::fs::metadata(&s.kernel).await.map_err(|e| {
+        tracing::warn!(error = %e, path = %s.kernel.display(), "kernel metadata failed");
+        io_to_status(&e)
+    })?;
     let size = meta.len();
     let mtime = meta
         .modified()
@@ -41,16 +57,17 @@ pub async fn kernel_info(
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map_or(0, |d| d.as_secs() as i64);
 
-    let mut f = tokio::fs::File::open(&s.kernel)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let mut f = tokio::fs::File::open(&s.kernel).await.map_err(|e| {
+        tracing::warn!(error = %e, path = %s.kernel.display(), "kernel open failed");
+        io_to_status(&e)
+    })?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     loop {
-        let n = f
-            .read(&mut buf)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let n = f.read(&mut buf).await.map_err(|e| {
+            tracing::warn!(error = %e, "kernel read failed mid-hash");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
         if n == 0 {
             break;
         }
