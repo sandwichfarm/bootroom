@@ -41,7 +41,7 @@ Plans:
 - [ ] 01-SKELETON.md — Walking Skeleton architectural narrative
 - [x] 01-01-PLAN.md — Workspace bootstrap (Cargo workspace, license, README, .gitignore)
 - [x] 01-02-PLAN.md — qemu-wasm asset pipeline (Makefile, build.rs validation, committed artifacts)
-- [ ] 01-03-PLAN.md — Vendored web deps (xterm.js 5.3.0, xterm-pty 0.12.0, VERSIONS.md)
+- [x] 01-03-PLAN.md — Vendored web deps (xterm.js 5.3.0, xterm-pty 0.12.0, VERSIONS.md)
 - [ ] 01-04-PLAN.md — axum server skeleton (CLI, COOP/COEP middleware, bind, embed roots)
 - [ ] 01-05-PLAN.md — API + asset handlers (/api/kernel/info, /kernel, /assets/{*path})
 - [ ] 01-06-PLAN.md — UI shell (index.html, app.js, style.css per UI-SPEC)

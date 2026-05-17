@@ -21,14 +21,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **SERV-01**: `bootroom serve --kernel <path>` starts an HTTP server bound to `127.0.0.1` on a default port.
 - [ ] **SERV-02**: Server emits `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on every response.
-- [ ] **SERV-03**: Server embeds and serves the qemu-wasm artifacts (`.wasm`, `.data`, `.worker.js`) and the vanilla-JS UI from `include_dir!`.
+- [x] **SERV-03**: Server embeds and serves the qemu-wasm artifacts (`.wasm`, `.data`, `.worker.js`) and the vanilla-JS UI from `include_dir!`.
 - [ ] **SERV-04**: `--assets-dir <path>` runtime flag overrides the embedded assets for development of bootroom itself.
 - [ ] **SERV-05**: `--port <N>` and `--host <addr>` flags override the bind defaults.
 - [ ] **SERV-06**: Server opens the user's default browser to the harness URL on start (suppressed by `--no-open`).
 
 ### Browser Harness
 
-- [ ] **UI-01**: Page boots `qemu-system-riscv64.wasm` using qemu-wasm's xterm-pty integration, with the supplied kernel loaded into the guest.
+- [x] **UI-01**: Page boots `qemu-system-riscv64.wasm` using qemu-wasm's xterm-pty integration, with the supplied kernel loaded into the guest.
 - [ ] **UI-02**: Live serial console rendered via xterm.js, mounted on the xterm-pty `slave` (= guest `ttyS0`).
 - [ ] **UI-03**: Serial console supports free-form keyboard input written through to the guest.
 - [ ] **UI-04**: Console has "clear" and "copy all" controls.
@@ -157,7 +157,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SERV-04 | Phase 1 — Walking Skeleton | Pending |
 | SERV-05 | Phase 1 — Walking Skeleton | Pending |
 | SERV-06 | Phase 2 — WebSocket + Live Serial | Pending |
-| UI-01 | Phase 1 — Walking Skeleton | Pending |
+| UI-01 | Phase 1 — Walking Skeleton | Complete |
 | UI-02 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-03 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-04 | Phase 2 — WebSocket + Live Serial | Pending |
