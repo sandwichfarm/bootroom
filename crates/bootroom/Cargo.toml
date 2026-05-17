@@ -1,0 +1,24 @@
+[package]
+name = "bootroom"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Web-based test harness for RISC-V kernels via qemu-wasm."
+
+[[bin]]
+name = "bootroom"
+path = "src/main.rs"
+
+[dependencies]
+bootroom-core.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
