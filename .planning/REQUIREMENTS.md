@@ -144,13 +144,79 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by gsd-roadmapper) | — | Pending |
+| DIST-01 | Phase 1 — Walking Skeleton | Pending |
+| DIST-02 | Phase 6 — Distribution | Pending |
+| DIST-03 | Phase 6 — Distribution | Pending |
+| DIST-04 | Phase 6 — Distribution | Pending |
+| DIST-05 | Phase 6 — Distribution | Pending |
+| DIST-06 | Phase 6 — Distribution | Pending |
+| DIST-07 | Phase 6 — Distribution | Pending |
+| SERV-01 | Phase 1 — Walking Skeleton | Pending |
+| SERV-02 | Phase 1 — Walking Skeleton | Pending |
+| SERV-03 | Phase 1 — Walking Skeleton | Pending |
+| SERV-04 | Phase 1 — Walking Skeleton | Pending |
+| SERV-05 | Phase 1 — Walking Skeleton | Pending |
+| SERV-06 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-01 | Phase 1 — Walking Skeleton | Pending |
+| UI-02 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-03 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-04 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-05 | Phase 1 — Walking Skeleton | Pending |
+| UI-06 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-07 | Phase 1 — Walking Skeleton | Pending |
+| UI-08 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-09 | Phase 2 — WebSocket + Live Serial | Pending |
+| WS-01 | Phase 2 — WebSocket + Live Serial | Pending |
+| WS-02 | Phase 2 — WebSocket + Live Serial | Pending |
+| WS-03 | Phase 2 — WebSocket + Live Serial | Pending |
+| WS-04 | Phase 2 — WebSocket + Live Serial | Pending |
+| CFG-01 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-02 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-03 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-04 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-05 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-06 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-07 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-08 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-09 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-10 | Phase 3 — Config, Buttons, Watcher | Pending |
+| ACT-01 | Phase 3 — Config, Buttons, Watcher | Pending |
+| ACT-02 | Phase 3 — Config, Buttons, Watcher | Pending |
+| ACT-03 | Phase 3 — Config, Buttons, Watcher | Pending |
+| ACT-04 | Phase 3 — Config, Buttons, Watcher | Pending |
+| WCH-01 | Phase 3 — Config, Buttons, Watcher | Pending |
+| WCH-02 | Phase 3 — Config, Buttons, Watcher | Pending |
+| WCH-03 | Phase 3 — Config, Buttons, Watcher | Pending |
+| WCH-04 | Phase 3 — Config, Buttons, Watcher | Pending |
+| WCH-05 | Phase 3 — Config, Buttons, Watcher | Pending |
+| RUN-01 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-02 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-03 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-04 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-05 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-06 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-07 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-08 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-09 | Phase 4 — Scenario Engine + Headless | Pending |
+| RUN-10 | Phase 4 — Scenario Engine + Headless | Pending |
+| CLI-01 | Phase 5 — Diagnostics & Doctor | Pending |
+| CLI-02 | Phase 4 — Scenario Engine + Headless | Pending |
+| CLI-03 | Phase 1 — Walking Skeleton | Pending |
+| DOC-01 | Phase 5 — Diagnostics & Doctor | Pending |
 
 **Coverage:**
-- v1 requirements: 53 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 53 ⚠️
+- v1 requirements: 59 total
+- Mapped to phases: 59 (100%) ✓
+- Unmapped: 0
+
+**Per-phase counts:**
+- Phase 1 — Walking Skeleton: 10
+- Phase 2 — WebSocket + Live Serial: 11
+- Phase 3 — Config, Buttons, Watcher: 19
+- Phase 4 — Scenario Engine + Headless: 11
+- Phase 5 — Diagnostics & Doctor: 2
+- Phase 6 — Distribution: 6
 
 ---
 *Requirements defined: 2026-05-17*
-*Last updated: 2026-05-17 after initial definition*
+*Last updated: 2026-05-17 after roadmap mapping (gsd-roadmapper)*
