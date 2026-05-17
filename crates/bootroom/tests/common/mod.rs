@@ -15,7 +15,7 @@ pub struct TestServer {
 }
 
 /// WR-06: abort the spawned server task on drop. The previous
-/// `_handle` field detached the JoinHandle, so the task lived until
+/// `_handle` field detached the `JoinHandle`, so the task lived until
 /// the test's tokio runtime tore down — every test leaked a listener
 /// and a `.expect("axum::serve")` panic inside the task became
 /// invisible. Aborting on drop releases the port immediately when
