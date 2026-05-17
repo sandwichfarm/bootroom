@@ -19,11 +19,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Server (`serve` mode)
 
-- [ ] **SERV-01**: `bootroom serve --kernel <path>` starts an HTTP server bound to `127.0.0.1` on a default port.
-- [ ] **SERV-02**: Server emits `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on every response.
+- [x] **SERV-01**: `bootroom serve --kernel <path>` starts an HTTP server bound to `127.0.0.1` on a default port.
+- [x] **SERV-02**: Server emits `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on every response.
 - [x] **SERV-03**: Server embeds and serves the qemu-wasm artifacts (`.wasm`, `.data`, `.worker.js`) and the vanilla-JS UI from `include_dir!`.
 - [ ] **SERV-04**: `--assets-dir <path>` runtime flag overrides the embedded assets for development of bootroom itself.
-- [ ] **SERV-05**: `--port <N>` and `--host <addr>` flags override the bind defaults.
+- [x] **SERV-05**: `--port <N>` and `--host <addr>` flags override the bind defaults.
 - [ ] **SERV-06**: Server opens the user's default browser to the harness URL on start (suppressed by `--no-open`).
 
 ### Browser Harness
@@ -90,7 +90,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **CLI-01**: Top-level subcommands are short verbs: `serve`, `run`, `init`, `check`, `doctor`, `--version`, `--help`.
 - [ ] **CLI-02**: Common flags (`--kernel`, `--config`, `--verbose`) are shared across subcommands via clap `#[flatten]`.
-- [ ] **CLI-03**: Common task = one command; no >1-line invocations required for routine work.
+- [x] **CLI-03**: Common task = one command; no >1-line invocations required for routine work.
 
 ### Diagnostics
 
@@ -151,11 +151,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DIST-05 | Phase 6 — Distribution | Pending |
 | DIST-06 | Phase 6 — Distribution | Pending |
 | DIST-07 | Phase 6 — Distribution | Pending |
-| SERV-01 | Phase 1 — Walking Skeleton | Pending |
-| SERV-02 | Phase 1 — Walking Skeleton | Pending |
+| SERV-01 | Phase 1 — Walking Skeleton | Complete (01-04) |
+| SERV-02 | Phase 1 — Walking Skeleton | Complete (01-04) |
 | SERV-03 | Phase 1 — Walking Skeleton | Pending (01-02 scaffolding ready; artifacts pending docker build) |
 | SERV-04 | Phase 1 — Walking Skeleton | Pending |
-| SERV-05 | Phase 1 — Walking Skeleton | Pending |
+| SERV-05 | Phase 1 — Walking Skeleton | Complete (01-04) |
 | SERV-06 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-01 | Phase 1 — Walking Skeleton | Complete |
 | UI-02 | Phase 2 — WebSocket + Live Serial | Pending |
@@ -201,7 +201,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RUN-10 | Phase 4 — Scenario Engine + Headless | Pending |
 | CLI-01 | Phase 5 — Diagnostics & Doctor | Pending |
 | CLI-02 | Phase 4 — Scenario Engine + Headless | Pending |
-| CLI-03 | Phase 1 — Walking Skeleton | Pending |
+| CLI-03 | Phase 1 — Walking Skeleton | Complete (01-04) |
 | DOC-01 | Phase 5 — Diagnostics & Doctor | Pending |
 
 **Coverage:**

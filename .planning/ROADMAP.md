@@ -42,7 +42,7 @@ Plans:
 - [x] 01-01-PLAN.md — Workspace bootstrap (Cargo workspace, license, README, .gitignore)
 - [x] 01-02-PLAN.md — qemu-wasm asset pipeline (Makefile, build.rs validation, committed artifacts)
 - [x] 01-03-PLAN.md — Vendored web deps (xterm.js 5.3.0, xterm-pty 0.12.0, VERSIONS.md)
-- [ ] 01-04-PLAN.md — axum server skeleton (CLI, COOP/COEP middleware, bind, embed roots)
+- [x] 01-04-PLAN.md — axum server skeleton (CLI, COOP/COEP middleware, bind, embed roots)
 - [ ] 01-05-PLAN.md — API + asset handlers (/api/kernel/info, /kernel, /assets/{*path})
 - [ ] 01-06-PLAN.md — UI shell (index.html, app.js, style.css per UI-SPEC)
 - [ ] 01-07-PLAN.md — Integration tests (SERV-01..05, UI-07 API) + headed-browser smoke checkpoint
@@ -139,7 +139,7 @@ All 59 v1 requirements mapped to exactly one phase. See REQUIREMENTS.md Traceabi
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Walking Skeleton | 0/? | Not started | — |
+| 1. Walking Skeleton | 4/9 | In progress | — |
 | 2. WebSocket + Live Serial | 0/? | Not started | — |
 | 3. Config, Buttons, Watcher | 0/? | Not started | — |
 | 4. Scenario Engine + Headless | 0/? | Not started | — |
