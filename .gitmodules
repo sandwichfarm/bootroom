@@ -1,0 +1,3 @@
+[submodule "qemu-wasm"]
+	path = qemu-wasm
+	url = https://github.com/ktock/qemu-wasm.git

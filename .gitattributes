@@ -1,0 +1,5 @@
+# Treat qemu-wasm binary artifacts as binary so git doesn't try to
+# diff or auto-convert line endings. See crates/bootroom/assets/qemu/REBUILD.md.
+*.wasm binary
+*.data binary
+crates/bootroom/assets/qemu/qemu-system-riscv64.data binary
