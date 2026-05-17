@@ -11,7 +11,20 @@ use tokio::net::TcpListener;
 
 pub struct TestServer {
     pub base_url: String,
-    _handle: tokio::task::JoinHandle<()>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+/// WR-06: abort the spawned server task on drop. The previous
+/// `_handle` field detached the JoinHandle, so the task lived until
+/// the test's tokio runtime tore down — every test leaked a listener
+/// and a `.expect("axum::serve")` panic inside the task became
+/// invisible. Aborting on drop releases the port immediately when
+/// the test scope ends and lets us drop the `expect` (a leaked task
+/// can no longer drag a hidden panic into the runtime).
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
 }
 
 /// Spawn a bootroom HTTP server on an ephemeral port.
@@ -22,11 +35,14 @@ pub async fn spawn(kernel: PathBuf, assets_dir: Option<PathBuf>) -> TestServer {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind 0");
     let addr = listener.local_addr().expect("local_addr");
     let handle = tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("axum::serve");
+        // Ignore the result: when TestServer is dropped we abort the
+        // task, which causes axum::serve to return an error that we
+        // don't want to surface as a panic.
+        let _ = axum::serve(listener, app).await;
     });
     TestServer {
         base_url: format!("http://{addr}"),
-        _handle: handle,
+        handle,
     }
 }
 
