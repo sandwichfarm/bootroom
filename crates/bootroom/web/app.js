@@ -111,21 +111,35 @@ xterm.loadAddon(master);
 Module.pty = slave;
 Module.mainScriptUrlOrBlob = location.origin + '/assets/qemu/out.js';
 
-// Terminal resize handler — recompute the terminal cell grid from the
-// container's actual offsetHeight (UI-checker recommendation: do not
-// hard-code header height; query the live DOM).
+// Terminal resize handler — recompute xterm's cell grid from the container's
+// live offsetWidth/Height. We can't pull in xterm's FitAddon (not vendored)
+// so we read the renderer's actual cell dimensions and call Terminal.resize
+// directly. Falls back gracefully if the private renderer API is unavailable.
 function fitTerminalToContainer() {
   const container = document.getElementById('terminal');
   if (!container) return;
-  // xterm.js exposes cols/rows but no built-in resize-without-FitAddon
-  // helper; approximate using the renderer's actCellSize. For Phase 1 we
-  // rely on xterm's own initial size and leave reflow to the browser —
-  // this handler is the scaffolding Phase 2 can swap a FitAddon into.
-  // It currently only re-reads the container dimensions so the resize
-  // event has an observable effect during manual smoke testing.
-  void container.offsetHeight;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if (w <= 0 || h <= 0) return;
+  // xterm's internal renderer exposes per-cell pixel size; path differs
+  // across xterm.js minor versions, so probe both shapes.
+  let cellW = 0, cellH = 0;
+  try {
+    const dims = xterm._core?._renderService?.dimensions;
+    cellW = dims?.css?.cell?.width ?? dims?.actualCellWidth ?? 0;
+    cellH = dims?.css?.cell?.height ?? dims?.actualCellHeight ?? 0;
+  } catch (_e) { /* private API moved; fall back */ }
+  if (cellW > 0 && cellH > 0) {
+    const cols = Math.max(20, Math.floor(w / cellW));
+    const rows = Math.max(5, Math.floor(h / cellH));
+    try { xterm.resize(cols, rows); } catch (_e) { /* tolerate */ }
+  }
 }
 window.addEventListener('resize', fitTerminalToContainer);
+// Best-effort initial fit before the runtime is up — xterm has just
+// rendered its initial 80x24 grid so cell dimensions are measurable.
+// bootGuest's onRuntimeInitialized also re-fits after the runtime starts.
+requestAnimationFrame(fitTerminalToContainer);
 
 // ---------------------------------------------------------------------------
 // Boot the guest
@@ -170,6 +184,9 @@ async function bootGuest() {
       return;
     }
     if (self.crossOriginIsolated) setPill('RUNNING');
+    // Re-fit once xterm has begun streaming serial — cell dimensions are
+    // most accurate now that the renderer has flushed at least one frame.
+    requestAnimationFrame(fitTerminalToContainer);
   };
   Module.onExit = (_code) => setPill('HALTED');
   Module.onAbort = (_what) => setPill('HALTED');
