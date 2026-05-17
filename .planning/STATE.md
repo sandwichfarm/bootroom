@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-05-PLAN.md (API + asset handlers)
-last_updated: "2026-05-17T14:15:04.955Z"
+stopped_at: Completed 01-06-PLAN.md (UI shell — index.html + app.js + style.css)
+last_updated: "2026-05-17T14:19:00Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 9
-  completed_plans: 5
-  percent: 56
+  completed_plans: 6
+  percent: 67
 ---
 
 # State: bootroom
@@ -28,12 +28,12 @@ progress:
 ## Current Position
 
 Phase: 1 (Walking Skeleton) — EXECUTING
-Plan: 5 of 9 complete (next: 01-06 author web/index.html + app.js + style.css)
+Plan: 6 of 9 complete (next: 01-07 — integration tests + manual headed-browser smoke against the embedded UI)
 
 - **Phase:** 1 — Walking Skeleton
-- **Plan:** 01-05 complete — four real route handlers wired into build_router; GET /api/kernel/info, /kernel, and /assets/{*path} return live responses; V12 path-traversal protection on --assets-dir; .wasm served with application/wasm
+- **Plan:** 01-06 complete — Phase 1 UI shell shipped (crates/bootroom/web/index.html + app.js + style.css); inline SAB probe before module scripts; xterm/xterm-pty mount per qemu-wasm reference; kernel bytes injected via synchronous preRun closure; status pill state machine driven by emscripten lifecycle callbacks; UI-SPEC palette + typography enforced; zero CDN references
 - **Status:** Executing Phase 1
-- **Progress:** [██████░░░░] 56%
+- **Progress:** [██████░░░░] 67%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Carried from `PROJECT.md` Key Decisions:
 - [Phase ?]: 01-03: Vendored xterm@5.3.0 (unscoped) and xterm-pty@0.12.0 as UMD bundles; pinned via SHA-256 in vendor/VERSIONS.md with MIT licenses captured verbatim in vendor/LICENSES.md
 - [Phase 1]: 01-04: axum 0.8 + tower-http 0.6 + clap derive; default bind 127.0.0.1:8765; COOP/COEP via SetResponseHeaderLayer::overriding on every response (verified on 404 + 501 paths); --kernel existence validated at startup (V5); non-loopback --host emits tracing::warn (V4 partial); library exposes build_router/AppState/ServeArgs for plan 01-07 integration tests
 - [Phase 1]: 01-05: Streaming SHA-256 (constant memory) for /api/kernel/info; tokio_util ReaderStream + Body::from_stream for /kernel; mime_guess::from_path with octet-stream fallback resolves .wasm -> application/wasm; V12 path-traversal protection layered (reject `..` segments + canonicalize-and-confirm-descendant); tokio gains "io-util" workspace feature for AsyncReadExt::read
+- [Phase 1]: 01-06: Phase 1 UI shell (index.html / app.js / style.css) ships with inline non-module SAB probe BEFORE any module script (Pitfall #4 mitigated); xterm.js + xterm-pty wired per qemu-wasm reference with `attachCustomKeyEventHandler(() => false)` marking input as Phase-1 no-op; kernel bytes fetched up-front and written into Module.FS via synchronous preRun closure (the pendingKernel fallback — bypasses any qemu-wasm-build async-preRun dependency); status pill driven by Module.onRuntimeInitialized / onExit / onAbort; UI-SPEC palette declared once in :root, zero hex outside that block; /assets/qemu/load.js retained (180 lines of emscripten data-pack preload glue, required for /pack/ mount); FitAddon NOT vendored — resize handler is a placeholder, Phase 2 swaps it
 
 ### Architecture (from research)
 
@@ -96,10 +97,10 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-17T14:15:04.947Z
-- **Stopped at:** Completed 01-05-PLAN.md (API + asset handlers)
-- **Next session:** Execute 01-06 (author crates/bootroom/web/index.html + app.js + style.css so GET / starts returning 200)
-- **Context to reload:** `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `research/SUMMARY.md`, `research/ARCHITECTURE.md`, `research/PITFALLS.md` (top 8 pitfalls), `.planning/phases/01-walking-skeleton/01-05-SUMMARY.md`.
+- **Last session:** 2026-05-17T14:19:00Z
+- **Stopped at:** Completed 01-06-PLAN.md (UI shell — index.html + app.js + style.css)
+- **Next session:** Execute 01-07 (integration tests + manual headed-browser smoke; exercise GET / + /api/kernel/info + /kernel + /assets/* end-to-end against the embedded UI)
+- **Context to reload:** `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `research/SUMMARY.md`, `research/ARCHITECTURE.md`, `research/PITFALLS.md` (top 8 pitfalls), `.planning/phases/01-walking-skeleton/01-06-SUMMARY.md`, `.planning/phases/01-walking-skeleton/01-05-SUMMARY.md`.
 
 ---
 *State initialized: 2026-05-17 via gsd-roadmapper*

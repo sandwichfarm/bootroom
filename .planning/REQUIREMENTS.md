@@ -32,7 +32,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **UI-02**: Live serial console rendered via xterm.js, mounted on the xterm-pty `slave` (= guest `ttyS0`).
 - [ ] **UI-03**: Serial console supports free-form keyboard input written through to the guest.
 - [ ] **UI-04**: Console has "clear" and "copy all" controls.
-- [ ] **UI-05**: Page displays a `crossOriginIsolated` probe banner with a fix hint when SAB is unavailable.
+- [x] **UI-05**: Page displays a `crossOriginIsolated` probe banner with a fix hint when SAB is unavailable.
 - [ ] **UI-06**: Status pill shows guest state (Idle / Loading / Running / Halted).
 - [x] **UI-07**: Header shows kernel info: path, size, mtime.
 - [ ] **UI-08**: "Launch" button (re)boots the guest with the freshest kernel build.
@@ -161,7 +161,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-02 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-03 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-04 | Phase 2 — WebSocket + Live Serial | Pending |
-| UI-05 | Phase 1 — Walking Skeleton | Pending |
+| UI-05 | Phase 1 — Walking Skeleton | Complete |
 | UI-06 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-07 | Phase 1 — Walking Skeleton | Complete |
 | UI-08 | Phase 2 — WebSocket + Live Serial | Pending |
