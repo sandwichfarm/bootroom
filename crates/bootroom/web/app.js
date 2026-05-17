@@ -204,7 +204,25 @@ async function bootGuest() {
   // Module.FS isn't exposed publicly on this emscripten build; we use the
   // wrapper functions Module exposes (FS_unlink, FS_createDataFile).
   Module.onRuntimeInitialized = () => {
-    try { Module.FS_unlink('/pack/Image'); } catch (_e) { /* not present yet */ }
+    // WR-08: emscripten's FS errors expose .errno; 44 = ENOENT in the
+    // musl errno table emscripten uses ("file not yet present", the
+    // common case on first boot). Anything else (EROFS, EACCES, EBUSY,
+    // unexpected internal-FS state) means the subsequent
+    // FS_createDataFile is going to misfire with EEXIST or worse; bail
+    // now with the real cause rather than letting the user chase a
+    // misleading downstream error.
+    try {
+      Module.FS_unlink('/pack/Image');
+    } catch (e) {
+      if (e && e.errno !== undefined && e.errno !== 44) {
+        console.error('FS_unlink failed unexpectedly:', e);
+        try { slave.write('[bootroom] Cannot replace /pack/Image: ' + (e.message || e) + '\r\n'); } catch (_e2) {}
+        setPill('HALTED');
+        return;
+      }
+      // errno === 44 (ENOENT) or no errno field at all — treat as
+      // "file not present yet"; this is the expected first-boot case.
+    }
     try {
       Module.FS_createDataFile('/pack', 'Image', pendingKernel, true, true, true);
     } catch (e) {
