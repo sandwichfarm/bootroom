@@ -22,7 +22,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SERV-01**: `bootroom serve --kernel <path>` starts an HTTP server bound to `127.0.0.1` on a default port.
 - [x] **SERV-02**: Server emits `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on every response.
 - [x] **SERV-03**: Server embeds and serves the qemu-wasm artifacts (`.wasm`, `.data`, `.worker.js`) and the vanilla-JS UI from `include_dir!`.
-- [ ] **SERV-04**: `--assets-dir <path>` runtime flag overrides the embedded assets for development of bootroom itself.
+- [x] **SERV-04**: `--assets-dir <path>` runtime flag overrides the embedded assets for development of bootroom itself.
 - [x] **SERV-05**: `--port <N>` and `--host <addr>` flags override the bind defaults.
 - [ ] **SERV-06**: Server opens the user's default browser to the harness URL on start (suppressed by `--no-open`).
 
@@ -34,7 +34,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **UI-04**: Console has "clear" and "copy all" controls.
 - [ ] **UI-05**: Page displays a `crossOriginIsolated` probe banner with a fix hint when SAB is unavailable.
 - [ ] **UI-06**: Status pill shows guest state (Idle / Loading / Running / Halted).
-- [ ] **UI-07**: Header shows kernel info: path, size, mtime.
+- [x] **UI-07**: Header shows kernel info: path, size, mtime.
 - [ ] **UI-08**: "Launch" button (re)boots the guest with the freshest kernel build.
 - [ ] **UI-09**: "Reset" button restarts the guest with the currently-loaded kernel (no reload).
 
@@ -154,7 +154,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SERV-01 | Phase 1 — Walking Skeleton | Complete (01-04) |
 | SERV-02 | Phase 1 — Walking Skeleton | Complete (01-04) |
 | SERV-03 | Phase 1 — Walking Skeleton | Pending (01-02 scaffolding ready; artifacts pending docker build) |
-| SERV-04 | Phase 1 — Walking Skeleton | Pending |
+| SERV-04 | Phase 1 — Walking Skeleton | Complete |
 | SERV-05 | Phase 1 — Walking Skeleton | Complete (01-04) |
 | SERV-06 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-01 | Phase 1 — Walking Skeleton | Complete |
@@ -163,7 +163,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-04 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-05 | Phase 1 — Walking Skeleton | Pending |
 | UI-06 | Phase 2 — WebSocket + Live Serial | Pending |
-| UI-07 | Phase 1 — Walking Skeleton | Pending |
+| UI-07 | Phase 1 — Walking Skeleton | Complete |
 | UI-08 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-09 | Phase 2 — WebSocket + Live Serial | Pending |
 | WS-01 | Phase 2 — WebSocket + Live Serial | Pending |

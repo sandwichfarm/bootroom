@@ -43,7 +43,7 @@ Plans:
 - [x] 01-02-PLAN.md — qemu-wasm asset pipeline (Makefile, build.rs validation, committed artifacts)
 - [x] 01-03-PLAN.md — Vendored web deps (xterm.js 5.3.0, xterm-pty 0.12.0, VERSIONS.md)
 - [x] 01-04-PLAN.md — axum server skeleton (CLI, COOP/COEP middleware, bind, embed roots)
-- [ ] 01-05-PLAN.md — API + asset handlers (/api/kernel/info, /kernel, /assets/{*path})
+- [x] 01-05-PLAN.md — API + asset handlers (/api/kernel/info, /kernel, /assets/{*path})
 - [ ] 01-06-PLAN.md — UI shell (index.html, app.js, style.css per UI-SPEC)
 - [ ] 01-07-PLAN.md — Integration tests (SERV-01..05, UI-07 API) + headed-browser smoke checkpoint
 - [ ] 01-08-PLAN.md — Spike B: headless Chromium + SAB + qemu-wasm (emits SPIKE-B-RESULT.md)
