@@ -6,13 +6,7 @@ use crate::{
     state::AppState,
 };
 use anyhow::{Context, Result};
-use axum::{
-    Router,
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-};
+use axum::{Router, routing::get};
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -20,37 +14,12 @@ use std::{
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
-async fn index_stub(State(_s): State<Arc<AppState>>) -> impl IntoResponse {
-    (StatusCode::NOT_IMPLEMENTED, "plan 01-05 wires this: GET /")
-}
-async fn kernel_info_stub(State(_s): State<Arc<AppState>>) -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        "plan 01-05 wires this: GET /api/kernel/info",
-    )
-}
-async fn kernel_stream_stub(State(_s): State<Arc<AppState>>) -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        "plan 01-05 wires this: GET /kernel",
-    )
-}
-async fn asset_stub(
-    State(_s): State<Arc<AppState>>,
-    Path(_p): Path<String>,
-) -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        "plan 01-05 wires this: GET /assets/{*path}",
-    )
-}
-
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
-        .route("/", get(index_stub))
-        .route("/api/kernel/info", get(kernel_info_stub))
-        .route("/kernel", get(kernel_stream_stub))
-        .route("/assets/{*path}", get(asset_stub))
+        .route("/", get(crate::assets::serve_index))
+        .route("/api/kernel/info", get(crate::kernel_info::kernel_info))
+        .route("/kernel", get(crate::kernel_stream::kernel_stream))
+        .route("/assets/{*path}", get(crate::assets::serve_asset))
         .with_state(state)
         .layer(coop_layer())
         .layer(coep_layer())
@@ -113,7 +82,7 @@ fn is_loopback(ip: &IpAddr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, http::Request};
+    use axum::{body::Body, http::Request, http::StatusCode};
     use std::path::PathBuf;
     use tower::ServiceExt;
 
@@ -145,14 +114,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_router_returns_coop_coep_on_stub_route() {
+    async fn test_full_router_serves_embedded_wasm_with_coop() {
         let app = build_router(test_state());
         let resp = app
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/qemu/qemu-system-riscv64.wasm")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
-        // 501 from stub, but the layer must still attach
-        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers().get("content-type").unwrap(),
+            "application/wasm"
+        );
         assert_eq!(
             resp.headers().get("cross-origin-opener-policy").unwrap(),
             "same-origin"
