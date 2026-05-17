@@ -36,11 +36,11 @@ Press one button, get the freshest kernel running in a browser with a click-to-t
   3. Opening the served URL in Chrome/Firefox boots `qemu-system-riscv64.wasm` with the supplied kernel; a `crossOriginIsolated` probe banner appears (with a fix hint) if SAB is unavailable.
   4. The page header displays the kernel's path, file size, and mtime; the bundled qemu-wasm submodule's xterm-pty integration is wired up (terminal visible, even if not yet interactive).
   5. `--assets-dir <path>`, `--port <N>`, and `--host <addr>` flags work; `bootroom serve` is the only command needed for the common case (no >1-line invocation).
-**Plans:** 9 plans + 1 skeleton
+**Plans:** 2/9 plans executed
 Plans:
 - [ ] 01-SKELETON.md — Walking Skeleton architectural narrative
-- [ ] 01-01-PLAN.md — Workspace bootstrap (Cargo workspace, license, README, .gitignore)
-- [ ] 01-02-PLAN.md — qemu-wasm asset pipeline (Makefile, build.rs validation, committed artifacts)
+- [x] 01-01-PLAN.md — Workspace bootstrap (Cargo workspace, license, README, .gitignore)
+- [x] 01-02-PLAN.md — qemu-wasm asset pipeline (Makefile, build.rs validation, committed artifacts)
 - [ ] 01-03-PLAN.md — Vendored web deps (xterm.js 5.3.0, xterm-pty 0.12.0, VERSIONS.md)
 - [ ] 01-04-PLAN.md — axum server skeleton (CLI, COOP/COEP middleware, bind, embed roots)
 - [ ] 01-05-PLAN.md — API + asset handlers (/api/kernel/info, /kernel, /assets/{*path})

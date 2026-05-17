@@ -144,7 +144,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DIST-01 | Phase 1 — Walking Skeleton | Pending |
+| DIST-01 | Phase 1 — Walking Skeleton | Blocked (01-02: qemu artifacts pending) |
 | DIST-02 | Phase 6 — Distribution | Pending |
 | DIST-03 | Phase 6 — Distribution | Pending |
 | DIST-04 | Phase 6 — Distribution | Pending |
@@ -153,7 +153,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DIST-07 | Phase 6 — Distribution | Pending |
 | SERV-01 | Phase 1 — Walking Skeleton | Pending |
 | SERV-02 | Phase 1 — Walking Skeleton | Pending |
-| SERV-03 | Phase 1 — Walking Skeleton | Pending |
+| SERV-03 | Phase 1 — Walking Skeleton | Pending (01-02 scaffolding ready; artifacts pending docker build) |
 | SERV-04 | Phase 1 — Walking Skeleton | Pending |
 | SERV-05 | Phase 1 — Walking Skeleton | Pending |
 | SERV-06 | Phase 2 — WebSocket + Live Serial | Pending |

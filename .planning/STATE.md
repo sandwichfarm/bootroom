@@ -2,13 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-last_updated: "2026-05-17T12:16:07.718Z"
+status: executing
+last_updated: "2026-05-17T13:29:21.480Z"
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 9
+  completed_plans: 2
+  percent: 22
 ---
 
 # State: bootroom
@@ -21,14 +22,17 @@ progress:
 
 **Core Value:** Press one button, get the freshest kernel running in a browser with a click-to-trigger scenario library. If everything else fails, that one path must stay friction-free.
 
-**Current Focus:** Phase 1 — Walking Skeleton. Serve qemu-wasm with correct COOP/COEP, boot a NORN kernel in a real browser tab, run the two required Phase-1 spikes (runtime kernel substitution; headless Chromium + SAB + qemu-wasm).
+**Current Focus:** Phase 1 — Walking Skeleton
 
 ## Current Position
 
+Phase: 1 (Walking Skeleton) — EXECUTING
+Plan: 1 of 9
+
 - **Phase:** 1 — Walking Skeleton (not started)
 - **Plan:** None — `/gsd-plan-phase 1` is the next step
-- **Status:** Roadmap approved, awaiting phase planning
-- **Progress:** `[░░░░░░░░░░] 0/6 phases`
+- **Status:** Executing Phase 1
+- **Progress:** [██░░░░░░░░] 22%
 
 ## Performance Metrics
 
@@ -53,6 +57,7 @@ Carried from `PROJECT.md` Key Decisions:
 - CI mode = `bootroom run --scenario …` with exit codes
 - Distribution = `cargo install` + `cargo-dist` prebuilt binaries
 - License = MIT OR Apache-2.0
+- [Phase ?]: 01-02: Skipped docker build due to host disk constraint; added BOOTROOM_SKIP_QEMU_ASSET_CHECK escape hatch in build.rs so dev work on unrelated Phase 1 plans is unblocked.
 
 ### Architecture (from research)
 
@@ -75,7 +80,9 @@ Carried from `PROJECT.md` Key Decisions:
 
 ### Blockers
 
-None. Spikes A and B are de-risking activities for Phase 1, not external blockers.
+Spikes A and B are de-risking activities for Phase 1, not external blockers.
+
+- 01-02: docker build for qemu-wasm artifacts not run; host disk at 98% (12G free). User must free 10G+ then run 'make qemu-assets' to populate crates/bootroom/assets/qemu/.
 
 ### Key Pitfalls to Watch (top 3)
 
@@ -85,7 +92,7 @@ None. Spikes A and B are de-risking activities for Phase 1, not external blocker
 
 ## Session Continuity
 
-- **Last session:** 2026-05-17T12:16:07.709Z
+- **Last session:** 2026-05-17T13:29:16.681Z
 - **Next session:** Run `/gsd-plan-phase 1` to decompose Phase 1 into executable plans. Include both spikes as their own plans.
 - **Context to reload:** `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `research/SUMMARY.md`, `research/ARCHITECTURE.md`, `research/PITFALLS.md` (top 8 pitfalls).
 
