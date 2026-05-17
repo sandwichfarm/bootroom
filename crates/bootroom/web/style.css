@@ -1,0 +1,176 @@
+/*
+ * crates/bootroom/web/style.css
+ *
+ * Phase 1 dark theme per 01-UI-SPEC.md. The full palette is declared
+ * here once as CSS custom properties; no hex values are allowed outside
+ * the :root block (UI-SPEC palette enforcement).
+ */
+
+:root {
+  /* Spacing scale (UI-SPEC `## Spacing Scale`) */
+  --xs: 4px;
+  --sm: 8px;
+  --md: 16px;
+  --lg: 24px;
+
+  /* Color palette (UI-SPEC `## Color`) */
+  --bg:              #0E1116;
+  --surface:         #1A1F26;
+  --accent:          #7AA2F7;
+  --fg:              #C0CAF5;
+  --fg-muted:        #7A8295;
+  --status-loading:  #E0AF68;
+  --status-running:  #9ECE6A;
+  --status-halted:   #F7768E;
+  --banner-bg:       #3B1F26;
+  --banner-head:     #F7768E;
+}
+
+/* ------------------------------------------------------------------ */
+/* Global                                                              */
+/* ------------------------------------------------------------------ */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body.dark {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Menlo", "Consolas", "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+[hidden] { display: none; }
+
+/* ------------------------------------------------------------------ */
+/* Header                                                              */
+/* ------------------------------------------------------------------ */
+
+#hdr {
+  background: var(--surface);
+  padding: var(--sm) var(--md);
+  display: flex;
+  align-items: center;
+  gap: var(--md);
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Kernel-info dl: dt/dd pairs laid out inline as `label: value` columns */
+.kinfo {
+  display: flex;
+  gap: var(--md);
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  align-items: center;
+}
+
+.kinfo dt {
+  display: inline-block;
+  margin: 0 var(--xs) 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.kinfo dt::after {
+  content: ':';
+}
+
+.kinfo dd {
+  display: inline-block;
+  margin: 0 var(--sm) 0 0;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  max-width: 40ch;
+  overflow-x: auto;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.kinfo dd.accent {
+  color: var(--accent);
+}
+
+/* Status pill — uses data-state for color theming */
+.pill {
+  margin-left: auto;
+  padding: var(--xs) var(--sm);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.pill[data-state="LOADING"] { background: var(--status-loading); }
+.pill[data-state="RUNNING"] { background: var(--status-running); }
+.pill[data-state="HALTED"]  { background: var(--status-halted); }
+
+/* ------------------------------------------------------------------ */
+/* Cross-origin-isolation probe banner                                 */
+/* ------------------------------------------------------------------ */
+
+#iso-banner {
+  background: var(--banner-bg);
+  padding: var(--md);
+}
+
+#iso-banner strong {
+  display: block;
+  margin: 0 0 var(--xs) 0;
+  color: var(--banner-head);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#iso-banner p {
+  margin: 0;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------ */
+/* Terminal                                                            */
+/* ------------------------------------------------------------------ */
+
+#terminal {
+  flex: 1;
+  background: var(--bg);
+  min-height: 0;
+}
+
+/* Override xterm.js's default backgrounds so the terminal blends into
+ * the page (UI-SPEC dominant color). xterm.css ships with a different
+ * default; !important is necessary because xterm's own theme system
+ * requires JS configuration that we do not exercise in Phase 1. */
+.xterm,
+.xterm .xterm-viewport,
+.xterm .xterm-screen {
+  background: var(--bg) !important;
+}
