@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-08-PLAN.md (Spike B — verdict green, chosen_path chromiumoxide)
-last_updated: "2026-05-17T17:55:00.000Z"
+stopped_at: Completed 01-09-PLAN.md (Spike A — verdict green, chosen_path module-fs-write)
+last_updated: "2026-05-17T16:01:40.083Z"
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 100
 ---
 
 # State: bootroom
@@ -27,20 +27,20 @@ progress:
 
 ## Current Position
 
-Phase: 1 (Walking Skeleton) — EXECUTING
-Plan: 8 of 9 complete (next: 01-09 — Spike A)
+Phase: 1 (Walking Skeleton) — COMPLETE
+Plan: 9 of 9 complete (Phase 1 done; next: /gsd-plan-phase 2)
 
-- **Phase:** 1 — Walking Skeleton
-- **Plan:** 01-08 complete — Spike B (headless Chromium + SAB + qemu-wasm) verdict GREEN. chromiumoxide 0.9.1 drives `/usr/bin/chromium` in `--headless=new` against an in-process bootroom server; `crossOriginIsolated=true`, `SharedArrayBuffer=true`, qemu-wasm reaches RUNNING and emits steady-state serial output (49 chars of NORN boot banner). Phase 4 plans against chromiumoxide; no Playwright-subprocess fallback needed. Spike crate (`crates/bootroom/spikes/spike-b`) is isolated from main bootroom dep tree (cargo tree -p bootroom shows zero chromiumoxide entries)
-- **Status:** Executing Phase 1
-- **Progress:** [█████████░] 89%
+- **Phase:** 1 — Walking Skeleton (COMPLETE)
+- **Plan:** 01-09 complete — Spike A (runtime kernel substitution) verdict GREEN, chosen_path module-fs-write. Production app.js already demonstrates the swap on every page load via FS_unlink + FS_createDataFile in onRuntimeInitialized (commit 04a31fa, fix from 01-07). qemu-wasm submodule SHA 0ef7b4e recorded in SPIKE-A-RESULT.md frontmatter per Pitfall 8. Phase 2 Launch button design unblocked with no Node dependency; in-place reset (no full page reload) deferred as optional Phase 2 optimisation.
+- **Status:** Phase 1 closed — ready for Phase 2 planning
+- **Progress:** [██████████] 100%
 
 ## Performance Metrics
 
 - Phases complete: 0/6
 - v1 requirements complete: 0/59
 - Validated requirements: 0
-- Open spikes: 1 (Phase-1 Spike A; Spike B retired — verdict green, chosen_path chromiumoxide)
+- Open spikes: 0 (Phase-1 Spike A retired — verdict green, chosen_path module-fs-write; Spike B retired — verdict green, chosen_path chromiumoxide)
 
 ## Accumulated Context
 
@@ -63,6 +63,7 @@ Carried from `PROJECT.md` Key Decisions:
 - [Phase 1]: 01-04: axum 0.8 + tower-http 0.6 + clap derive; default bind 127.0.0.1:8765; COOP/COEP via SetResponseHeaderLayer::overriding on every response (verified on 404 + 501 paths); --kernel existence validated at startup (V5); non-loopback --host emits tracing::warn (V4 partial); library exposes build_router/AppState/ServeArgs for plan 01-07 integration tests
 - [Phase 1]: 01-05: Streaming SHA-256 (constant memory) for /api/kernel/info; tokio_util ReaderStream + Body::from_stream for /kernel; mime_guess::from_path with octet-stream fallback resolves .wasm -> application/wasm; V12 path-traversal protection layered (reject `..` segments + canonicalize-and-confirm-descendant); tokio gains "io-util" workspace feature for AsyncReadExt::read
 - [Phase 1]: 01-06: Phase 1 UI shell (index.html / app.js / style.css) ships with inline non-module SAB probe BEFORE any module script (Pitfall #4 mitigated); xterm.js + xterm-pty wired per qemu-wasm reference with `attachCustomKeyEventHandler(() => false)` marking input as Phase-1 no-op; kernel bytes fetched up-front and written into Module.FS via synchronous preRun closure (the pendingKernel fallback — bypasses any qemu-wasm-build async-preRun dependency); status pill driven by Module.onRuntimeInitialized / onExit / onAbort; UI-SPEC palette declared once in :root, zero hex outside that block; /assets/qemu/load.js retained (180 lines of emscripten data-pack preload glue, required for /pack/ mount); FitAddon NOT vendored — resize handler is a placeholder, Phase 2 swaps it
+- [Phase 1]: 01-09: Spike A closed with verdict green / chosen_path module-fs-write. Production app.js (FS_unlink + FS_createDataFile in onRuntimeInitialized, commit 04a31fa from 01-07) is the proof; the substitution mechanism works on every page load against the real NORN kernel. qemu-wasm submodule SHA 0ef7b4e recorded in SPIKE-A-RESULT.md frontmatter per Pitfall 8. Phase 2 Launch button = fetch + FS_unlink + FS_createDataFile + location.reload (no Node dep). In-place reset (no full page reload) deferred as optional Phase 2 optimisation.
 
 ### Architecture (from research)
 
@@ -71,10 +72,10 @@ Carried from `PROJECT.md` Key Decisions:
 - xterm-pty `slave` is *the* byte boundary for both action injection (`slave.write`) and serial capture (`slave.onReadable`).
 - Scenarios run client-side (low latency); server is exit-code translator.
 
-### Open Spikes (Phase 1)
+### Retired Spikes (Phase 1)
 
-- **Spike A:** Confirm runtime kernel substitution into qemu-wasm `Module.FS` (avoid re-running emscripten `file_packager.py` per launch). If intractable: launch-time pack rebuild fallback.
-- **Spike B:** Confirm headless Chromium (`--headless=new`) + `SharedArrayBuffer` + COOP/COEP + qemu-wasm boots a fixture kernel end-to-end. If red: switch from `chromiumoxide` to Playwright subprocess (adds Node dep on CI runners).
+- **Spike A:** CLOSED 01-09 — verdict GREEN, chosen_path `module-fs-write`. Production app.js's onRuntimeInitialized injection (commit 04a31fa) is the proof. qemu-wasm SHA 0ef7b4e recorded per Pitfall 8. Phase 2 Launch button = fetch + FS_unlink + FS_createDataFile + location.reload (no Node dep). In-place reset deferred as Phase 2 optimisation.
+- **Spike B:** CLOSED 01-08 — verdict GREEN, chosen_path `chromiumoxide`. headless=new + SAB + qemu-wasm boots the NORN kernel end-to-end. Phase 4 driver locked.
 
 ### Todos
 
@@ -97,10 +98,10 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-17T15:55:54.171Z
-- **Stopped at:** Completed 01-06-PLAN.md (UI shell — index.html + app.js + style.css)
-- **Next session:** Execute 01-07 (integration tests + manual headed-browser smoke; exercise GET / + /api/kernel/info + /kernel + /assets/* end-to-end against the embedded UI)
-- **Context to reload:** `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `research/SUMMARY.md`, `research/ARCHITECTURE.md`, `research/PITFALLS.md` (top 8 pitfalls), `.planning/phases/01-walking-skeleton/01-06-SUMMARY.md`, `.planning/phases/01-walking-skeleton/01-05-SUMMARY.md`.
+- **Last session:** 2026-05-17T16:01:17.175Z
+- **Stopped at:** Completed 01-09-PLAN.md (Spike A — verdict green, chosen_path module-fs-write)
+- **Next session:** Plan Phase 2 (`/gsd-plan-phase 2`) — wire `/ws` for serial input, add Launch + Reset buttons (consume Spike A verdict: fetch + FS_unlink + FS_createDataFile + location.reload), auto-open browser on `serve` (SERV-06), Clear/Copy xterm controls.
+- **Context to reload:** `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `research/SUMMARY.md`, `research/ARCHITECTURE.md`, `research/PITFALLS.md` (top 8 pitfalls), `.planning/phases/01-walking-skeleton/01-09-SUMMARY.md`, `.planning/phases/01-walking-skeleton/01-08-SUMMARY.md`, `crates/bootroom/spikes/spike-a/SPIKE-A-RESULT.md`, `crates/bootroom/spikes/spike-b/SPIKE-B-RESULT.md`.
 
 ---
 *State initialized: 2026-05-17 via gsd-roadmapper*

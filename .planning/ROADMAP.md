@@ -13,7 +13,7 @@ Press one button, get the freshest kernel running in a browser with a click-to-t
 
 ## Phases
 
-- [ ] **Phase 1: Walking Skeleton** — `bootroom serve --kernel <path>` boots the kernel in a real browser via embedded qemu-wasm with COOP/COEP correct on the first request.
+- [x] **Phase 1: Walking Skeleton** — `bootroom serve --kernel <path>` boots the kernel in a real browser via embedded qemu-wasm with COOP/COEP correct on the first request. (completed 2026-05-17)
 - [ ] **Phase 2: WebSocket + Live Serial** — Interactive xterm.js console wired through the xterm-pty bridge over a single `/ws` endpoint; Launch / Reset / typing work end-to-end.
 - [ ] **Phase 3: Config, Buttons, Watcher** — TOML schema drives grouped action buttons that inject serial bytes; kernel-path watcher surfaces a "fresher build" banner.
 - [ ] **Phase 4: Scenario Engine + Headless `run`** — `bootroom run --scenario <name>` drives the same assets via headless Chromium and exits 0/1 on serial assertions.
@@ -36,7 +36,7 @@ Press one button, get the freshest kernel running in a browser with a click-to-t
   3. Opening the served URL in Chrome/Firefox boots `qemu-system-riscv64.wasm` with the supplied kernel; a `crossOriginIsolated` probe banner appears (with a fix hint) if SAB is unavailable.
   4. The page header displays the kernel's path, file size, and mtime; the bundled qemu-wasm submodule's xterm-pty integration is wired up (terminal visible, even if not yet interactive).
   5. `--assets-dir <path>`, `--port <N>`, and `--host <addr>` flags work; `bootroom serve` is the only command needed for the common case (no >1-line invocation).
-**Plans:** 6/9 plans executed
+**Plans:** 9/9 plans complete
 Plans:
 - [ ] 01-SKELETON.md — Walking Skeleton architectural narrative
 - [x] 01-01-PLAN.md — Workspace bootstrap (Cargo workspace, license, README, .gitignore)
@@ -47,7 +47,7 @@ Plans:
 - [x] 01-06-PLAN.md — UI shell (index.html, app.js, style.css per UI-SPEC)
 - [x] 01-07-PLAN.md — Integration tests (SERV-01..05, UI-07 API) + headed-browser smoke checkpoint
 - [x] 01-08-PLAN.md — Spike B: headless Chromium + SAB + qemu-wasm (emits SPIKE-B-RESULT.md)
-- [ ] 01-09-PLAN.md — Spike A: Module.FS runtime kernel substitution (emits SPIKE-A-RESULT.md)
+- [x] 01-09-PLAN.md — Spike A: Module.FS runtime kernel substitution (emits SPIKE-A-RESULT.md)
 
 ### Phase 2: WebSocket + Live Serial
 **Goal:** A user types into the browser terminal and sees their keystrokes reach the guest kernel; serial output streams back in real time through the architecture's load-bearing PTY-over-WS substrate.
