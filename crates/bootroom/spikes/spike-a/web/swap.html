@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Spike A — kernel swap scaffold</title>
+</head>
+<body>
+  <h1>Spike A — kernel swap scaffold</h1>
+  <p>Open the main bootroom page at <code>http://127.0.0.1:8765/</code>,
+  wait for guest boot (status pill = RUNNING), then paste
+  <code>swap.js</code> into the DevTools console.</p>
+  <p>Or load swap.js directly via the browser console:</p>
+  <pre>fetch('/spike-a/swap.js').then(r=&gt;r.text()).then(eval);</pre>
+  <p>(Requires bootroom configured to serve this file — easiest is to run
+  bootroom with <code>--assets-dir crates/bootroom/spikes/spike-a/</code>
+  and reference <code>/assets/web/swap.js</code>.)</p>
+  <p>For background and the documented verdict, see
+  <code>SPIKE-A-RESULT.md</code> alongside this file.</p>
+</body>
+</html>

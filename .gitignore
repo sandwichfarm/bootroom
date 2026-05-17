@@ -4,3 +4,5 @@
 .DS_Store
 crates/bootroom/spikes/spike-b/fixtures/*
 !crates/bootroom/spikes/spike-b/fixtures/.gitkeep
+crates/bootroom/spikes/spike-a/fixtures/*
+!crates/bootroom/spikes/spike-a/fixtures/.gitkeep
