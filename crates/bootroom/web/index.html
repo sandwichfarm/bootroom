@@ -44,6 +44,20 @@
   <div id="terminal"></div>
 
   <!--
+    Pre-initialize the global Module with locateFile so emscripten's loaders
+    (load.js, out.js, the worker JS) resolve bare asset names like
+    "qemu-system-riscv64.data" against /assets/qemu/ instead of the document
+    root. Must run BEFORE load.js. See: emscripten Module.locateFile docs.
+  -->
+  <script>
+    var Module = (typeof Module === 'object' && Module) || {};
+    window.Module = Module;
+    Module.locateFile = function (path, _scriptDirectory) {
+      return '/assets/qemu/' + path;
+    };
+  </script>
+
+  <!--
     Classic (non-module) script tags load in order. Each one attaches a
     global the ES module entrypoint below depends on:
       xterm.js     → window.Terminal

@@ -132,20 +132,9 @@ window.addEventListener('resize', fitTerminalToContainer);
 // ---------------------------------------------------------------------------
 
 async function bootGuest() {
-  // Hook lifecycle callbacks BEFORE initEmscriptenModule so early
-  // emscripten events don't slip past us.
-  Module.onRuntimeInitialized = () => {
-    if (self.crossOriginIsolated) setPill('RUNNING');
-  };
-  Module.onExit = (_code) => setPill('HALTED');
-  Module.onAbort = (_what) => setPill('HALTED');
-
   // Fetch the kernel bytes BEFORE calling initEmscriptenModule and stash
-  // them on Module so a synchronous preRun callback can write them into
-  // Module.FS. emscripten supports async preRun via addRunDependency, but
-  // the synchronous-with-pendingKernel path is the documented fallback in
-  // 01-06-PLAN Task 2 and avoids depending on the qemu-wasm build's
-  // emscripten flag set.
+  // them on Module so the onRuntimeInitialized callback can write them
+  // into the emscripten FS after the data pack has finished extracting.
   let pendingKernel = null;
   try {
     const res = await fetch('/kernel');
@@ -158,18 +147,32 @@ async function bootGuest() {
     return;
   }
 
-  Module.preRun = Module.preRun || [];
-  Module.preRun.push(() => {
+  // Hook lifecycle callbacks. onRuntimeInitialized fires AFTER preRun
+  // completes (data pack extracted, /pack/ populated) and BEFORE callMain
+  // — the only safe window to swap /pack/Image with the user's kernel.
+  //
+  // We can't write in preRun: emscripten's addOnPreRun uses unshift, which
+  // reverses the FIFO queue order. Our callback would land FIRST in
+  // __ATPRERUN__, creating /pack/Image before the data pack extraction
+  // runs. The data pack then collides on FS.mayCreate → throws errno 20
+  // (EEXIST in musl). onRuntimeInitialized is the natural overwrite point.
+  //
+  // Module.FS isn't exposed publicly on this emscripten build; we use the
+  // wrapper functions Module exposes (FS_unlink, FS_createDataFile).
+  Module.onRuntimeInitialized = () => {
+    try { Module.FS_unlink('/pack/Image'); } catch (_e) { /* not present yet */ }
     try {
-      // /pack/ is mounted by the data preload pack (qemu-system-riscv64.data)
-      // before preRun fires, but mkdirTree is a defensive no-op if present.
-      try { Module.FS.mkdirTree('/pack'); } catch (_e) { /* already exists */ }
-      Module.FS.writeFile('/pack/Image', pendingKernel);
+      Module.FS_createDataFile('/pack', 'Image', pendingKernel, true, true, true);
     } catch (e) {
       console.error('kernel inject failed:', e);
-      slave.write('[bootroom] Failed to write kernel into Module.FS: ' + e.message + '\r\n');
+      try { slave.write('[bootroom] Failed to inject kernel: ' + e.message + '\r\n'); } catch (_e) {}
+      setPill('HALTED');
+      return;
     }
-  });
+    if (self.crossOriginIsolated) setPill('RUNNING');
+  };
+  Module.onExit = (_code) => setPill('HALTED');
+  Module.onAbort = (_what) => setPill('HALTED');
 
   // Dynamic import of the emscripten glue. Vendored at /assets/qemu/out.js.
   const mod = await import('/assets/qemu/out.js');
