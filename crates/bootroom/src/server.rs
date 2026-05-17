@@ -47,9 +47,14 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     let state = Arc::new(AppState::new(args.kernel.clone(), args.assets_dir.clone()));
     let app = build_router(state);
 
-    let addr: SocketAddr = format!("{}:{}", args.host, args.port)
+    // Parse host as IpAddr first so IPv6 literals like `::1` work — naive
+    // `"{host}:{port}"` concatenation produces ambiguous strings such as
+    // `::1:8765` which SocketAddr cannot reliably round-trip (CR-01).
+    let ip: IpAddr = args
+        .host
         .parse()
-        .with_context(|| format!("invalid --host/--port: {}:{}", args.host, args.port))?;
+        .with_context(|| format!("invalid --host: {}", args.host))?;
+    let addr = SocketAddr::new(ip, args.port);
 
     // V4: warn if binding non-loopback.
     if !is_loopback(&addr.ip()) {
@@ -85,6 +90,38 @@ mod tests {
     use axum::{body::Body, http::Request, http::StatusCode};
     use std::path::PathBuf;
     use tower::ServiceExt;
+
+    /// CR-01 regression: `--host ::1` must parse to a valid IPv6 loopback
+    /// SocketAddr rather than mis-parsing the legacy `"{host}:{port}"`
+    /// concatenation. We construct the SocketAddr the same way `run` does
+    /// without actually binding (no port collisions on CI).
+    #[test]
+    fn test_ipv6_loopback_host_parses() {
+        let host = "::1";
+        let port: u16 = 8765;
+        let ip: IpAddr = host.parse().expect("::1 should parse as IpAddr");
+        let addr = SocketAddr::new(ip, port);
+        assert!(addr.is_ipv6());
+        assert!(is_loopback(&addr.ip()));
+        assert_eq!(addr.port(), port);
+        // The bracketed Display form is the canonical IPv6 socket-address
+        // rendering and is what the startup banner emits.
+        assert_eq!(addr.to_string(), "[::1]:8765");
+    }
+
+    #[test]
+    fn test_ipv4_host_parses() {
+        let ip: IpAddr = "127.0.0.1".parse().expect("v4 loopback parses");
+        let addr = SocketAddr::new(ip, 0);
+        assert!(addr.is_ipv4());
+        assert!(is_loopback(&addr.ip()));
+    }
+
+    #[test]
+    fn test_invalid_host_rejected() {
+        let res: std::result::Result<IpAddr, _> = "not-an-ip".parse();
+        assert!(res.is_err(), "non-IP host strings must fail to parse");
+    }
 
     fn test_state() -> Arc<AppState> {
         Arc::new(AppState::new(PathBuf::from("/tmp/fake-kernel"), None))
