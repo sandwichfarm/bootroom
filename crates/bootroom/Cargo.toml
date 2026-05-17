@@ -9,6 +9,10 @@ authors.workspace = true
 description = "Web-based test harness for RISC-V kernels via qemu-wasm."
 build = "build.rs"
 
+[lib]
+name = "bootroom"
+path = "src/lib.rs"
+
 [[bin]]
 name = "bootroom"
 path = "src/main.rs"
@@ -17,6 +21,22 @@ path = "src/main.rs"
 bootroom-core.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+include_dir.workspace = true
+mime_guess.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tower = { workspace = true, features = ["util"] }
 
 [lints.rust]
 unsafe_code = "forbid"
