@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bootroom — loading…</title>
+  <link rel="stylesheet" href="/assets/web/vendor/xterm.css">
+  <link rel="stylesheet" href="/assets/web/style.css">
+</head>
+<body class="dark">
+  <!--
+    Inline non-module SAB probe. Runs synchronously BEFORE any deferred
+    module script, so the banner appears even if a downstream script
+    crashes during emscripten init. See Pitfall #4 in 01-RESEARCH.md.
+  -->
+  <script>
+    (function () {
+      var sab = (typeof SharedArrayBuffer !== 'undefined') && self.crossOriginIsolated === true;
+      if (!sab) {
+        document.addEventListener('DOMContentLoaded', function () {
+          var b = document.getElementById('iso-banner');
+          if (b) b.removeAttribute('hidden');
+        });
+      }
+    })();
+  </script>
+
+  <header id="hdr">
+    <span class="wordmark">bootroom</span>
+    <dl class="kinfo">
+      <dt>path</dt><dd id="k-path">—</dd>
+      <dt>size</dt><dd id="k-size">—</dd>
+      <dt>mtime</dt><dd id="k-mtime">—</dd>
+      <dt>sha256</dt><dd id="k-sha" class="accent">—</dd>
+    </dl>
+    <span id="status" class="pill" data-state="LOADING"><span aria-hidden="true">●</span> LOADING</span>
+  </header>
+
+  <div id="iso-banner" role="alert" hidden>
+    <strong>Cross-origin isolation is not active.</strong>
+    <p>Bootroom requires COOP: same-origin and COEP: require-corp on every response. Open DevTools → Network and inspect the response headers on this page.</p>
+  </div>
+
+  <div id="terminal"></div>
+
+  <!--
+    Classic (non-module) script tags load in order. Each one attaches a
+    global the ES module entrypoint below depends on:
+      xterm.js     → window.Terminal
+      xterm-pty.js → window.openpty
+      load.js      → emscripten data-pack preload glue
+      module.js    → window.Module (the QEMU argv)
+    The module script is deferred by default, so all four classic scripts
+    have executed by the time app.js runs.
+  -->
+  <script src="/assets/web/vendor/xterm.js"></script>
+  <script src="/assets/web/vendor/xterm-pty.js"></script>
+  <script src="/assets/qemu/load.js"></script>
+  <script src="/assets/qemu/module.js"></script>
+  <script type="module" src="/assets/web/app.js"></script>
+</body>
+</html>
