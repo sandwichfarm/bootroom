@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-06-PLAN.md (UI shell — index.html + app.js + style.css)
-last_updated: "2026-05-17T14:19:00Z"
+stopped_at: Completed 01-08-PLAN.md (Spike B — verdict green, chosen_path chromiumoxide)
+last_updated: "2026-05-17T17:55:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 9
-  completed_plans: 6
-  percent: 67
+  completed_plans: 8
+  percent: 89
 ---
 
 # State: bootroom
@@ -28,19 +28,19 @@ progress:
 ## Current Position
 
 Phase: 1 (Walking Skeleton) — EXECUTING
-Plan: 6 of 9 complete (next: 01-07 — integration tests + manual headed-browser smoke against the embedded UI)
+Plan: 8 of 9 complete (next: 01-09 — Spike A)
 
 - **Phase:** 1 — Walking Skeleton
-- **Plan:** 01-06 complete — Phase 1 UI shell shipped (crates/bootroom/web/index.html + app.js + style.css); inline SAB probe before module scripts; xterm/xterm-pty mount per qemu-wasm reference; kernel bytes injected via synchronous preRun closure; status pill state machine driven by emscripten lifecycle callbacks; UI-SPEC palette + typography enforced; zero CDN references
+- **Plan:** 01-08 complete — Spike B (headless Chromium + SAB + qemu-wasm) verdict GREEN. chromiumoxide 0.9.1 drives `/usr/bin/chromium` in `--headless=new` against an in-process bootroom server; `crossOriginIsolated=true`, `SharedArrayBuffer=true`, qemu-wasm reaches RUNNING and emits steady-state serial output (49 chars of NORN boot banner). Phase 4 plans against chromiumoxide; no Playwright-subprocess fallback needed. Spike crate (`crates/bootroom/spikes/spike-b`) is isolated from main bootroom dep tree (cargo tree -p bootroom shows zero chromiumoxide entries)
 - **Status:** Executing Phase 1
-- **Progress:** [██████░░░░] 67%
+- **Progress:** [█████████░] 89%
 
 ## Performance Metrics
 
 - Phases complete: 0/6
 - v1 requirements complete: 0/59
 - Validated requirements: 0
-- Open spikes: 2 (Phase-1 Spike A, Spike B)
+- Open spikes: 1 (Phase-1 Spike A; Spike B retired — verdict green, chosen_path chromiumoxide)
 
 ## Accumulated Context
 
@@ -97,7 +97,7 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-17T14:19:00Z
+- **Last session:** 2026-05-17T15:55:54.171Z
 - **Stopped at:** Completed 01-06-PLAN.md (UI shell — index.html + app.js + style.css)
 - **Next session:** Execute 01-07 (integration tests + manual headed-browser smoke; exercise GET / + /api/kernel/info + /kernel + /assets/* end-to-end against the embedded UI)
 - **Context to reload:** `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `research/SUMMARY.md`, `research/ARCHITECTURE.md`, `research/PITFALLS.md` (top 8 pitfalls), `.planning/phases/01-walking-skeleton/01-06-SUMMARY.md`, `.planning/phases/01-walking-skeleton/01-05-SUMMARY.md`.

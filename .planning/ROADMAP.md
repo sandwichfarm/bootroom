@@ -45,8 +45,8 @@ Plans:
 - [x] 01-04-PLAN.md — axum server skeleton (CLI, COOP/COEP middleware, bind, embed roots)
 - [x] 01-05-PLAN.md — API + asset handlers (/api/kernel/info, /kernel, /assets/{*path})
 - [x] 01-06-PLAN.md — UI shell (index.html, app.js, style.css per UI-SPEC)
-- [ ] 01-07-PLAN.md — Integration tests (SERV-01..05, UI-07 API) + headed-browser smoke checkpoint
-- [ ] 01-08-PLAN.md — Spike B: headless Chromium + SAB + qemu-wasm (emits SPIKE-B-RESULT.md)
+- [x] 01-07-PLAN.md — Integration tests (SERV-01..05, UI-07 API) + headed-browser smoke checkpoint
+- [x] 01-08-PLAN.md — Spike B: headless Chromium + SAB + qemu-wasm (emits SPIKE-B-RESULT.md)
 - [ ] 01-09-PLAN.md — Spike A: Module.FS runtime kernel substitution (emits SPIKE-A-RESULT.md)
 
 ### Phase 2: WebSocket + Live Serial
