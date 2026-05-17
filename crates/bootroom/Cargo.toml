@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Web-based test harness for RISC-V kernels via qemu-wasm."
+build = "build.rs"
 
 [[bin]]
 name = "bootroom"
