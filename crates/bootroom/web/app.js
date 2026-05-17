@@ -20,9 +20,15 @@
  * one decimal place when the value is >= 10, two decimals below.
  */
 function humanBytes(n) {
-  if (n == null || isNaN(n)) return '—';
+  // WR-07: defend against null/undefined, non-numeric, negative, NaN
+  // and ±Infinity inputs the kernel-info API should never produce but
+  // might in error paths. Coerce through Number() FIRST so legitimate
+  // numeric strings ("12345") still format, then range-check.
+  if (n == null) return '—';
+  const num = Number(n);
+  if (!Number.isFinite(num) || num < 0) return '—';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-  let value = Number(n);
+  let value = num;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) {
     value /= 1024;
