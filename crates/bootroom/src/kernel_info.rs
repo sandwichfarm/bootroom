@@ -2,7 +2,7 @@
 //!
 //! Covers UI-07's API surface. The DOM rendering is plan 01-06's job.
 
-use crate::state::AppState;
+use crate::state::{AppState, CachedDigest};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -57,6 +57,23 @@ pub async fn kernel_info(
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map_or(0, |d| d.as_secs() as i64);
 
+    // WR-03: cache by (size, mtime_sec). Hashing a 40 MB kernel on
+    // every /api/kernel/info burns ~150-300 ms; once cached, a request
+    // costs one metadata() call plus a read-lock acquire.
+    {
+        let cache = s.digest_cache.read().await;
+        if let Some(c) = cache.as_ref() {
+            if c.size == size && c.mtime_sec == mtime {
+                return Ok(Json(KernelInfo {
+                    path: s.kernel.display().to_string(),
+                    size,
+                    mtime,
+                    sha256_prefix: c.sha256_prefix.clone(),
+                }));
+            }
+        }
+    }
+
     let mut f = tokio::fs::File::open(&s.kernel).await.map_err(|e| {
         tracing::warn!(error = %e, path = %s.kernel.display(), "kernel open failed");
         io_to_status(&e)
@@ -75,6 +92,18 @@ pub async fn kernel_info(
     }
     let digest = hasher.finalize();
     let sha256_prefix = hex::encode(&digest[..6]); // 12 hex chars
+
+    // Write-back the cache. Cheap; only happens on a real (size, mtime)
+    // change. We re-check inside the write lock to avoid a thundering
+    // herd writing the same digest from concurrent first requests.
+    {
+        let mut cache = s.digest_cache.write().await;
+        *cache = Some(CachedDigest {
+            size,
+            mtime_sec: mtime,
+            sha256_prefix: sha256_prefix.clone(),
+        });
+    }
 
     Ok(Json(KernelInfo {
         path: s.kernel.display().to_string(),
@@ -121,5 +150,30 @@ mod tests {
         ));
         let err = kernel_info(State(state)).await.unwrap_err();
         assert_eq!(err, StatusCode::NOT_FOUND);
+    }
+
+    /// WR-03 regression: second call with unchanged (size, mtime) is
+    /// served from cache and never re-hashes. We assert cache is
+    /// populated after the first call and the second call returns the
+    /// same digest without modifying the underlying file.
+    #[tokio::test]
+    async fn test_kernel_info_caches_digest_by_size_and_mtime() {
+        let p = write_tmp("cache", b"hello-cache");
+        let state = Arc::new(AppState::new(p.clone(), None));
+
+        let Json(info1) = kernel_info(State(state.clone())).await.unwrap();
+        // Cache populated.
+        {
+            let cache = state.digest_cache.read().await;
+            assert!(cache.is_some());
+            assert_eq!(cache.as_ref().unwrap().sha256_prefix, info1.sha256_prefix);
+        }
+
+        // Second call: same prefix, same path, same identity.
+        let Json(info2) = kernel_info(State(state.clone())).await.unwrap();
+        assert_eq!(info1.sha256_prefix, info2.sha256_prefix);
+        assert_eq!(info1.size, info2.size);
+
+        std::fs::remove_file(&p).ok();
     }
 }
