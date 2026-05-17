@@ -96,6 +96,30 @@ async function loadKernelInfo() {
 // xterm + xterm-pty mount
 // ---------------------------------------------------------------------------
 
+// WR-01: vendor scripts may fail to load (404, CORP/COEP violation, parse
+// error). Without this guard the next line throws a synchronous ReferenceError
+// at module evaluation time, neither loadKernelInfo() nor bootGuest() ever
+// run, and the status pill stays "LOADING" forever with no UI feedback.
+// Surface the failure in the iso-banner (the only always-visible alert
+// region on the page) and HALT the pill.
+if (typeof Terminal !== 'function' || typeof openpty !== 'function') {
+  setPill('HALTED');
+  const banner = document.getElementById('iso-banner');
+  if (banner) {
+    banner.removeAttribute('hidden');
+    banner.innerHTML =
+      '<strong>Bootroom UI failed to start.</strong>' +
+      '<p>Vendor scripts (xterm.js / xterm-pty) did not load — ' +
+      '<code>Terminal</code> or <code>openpty</code> is undefined. ' +
+      'Open DevTools → Network and check for 4xx responses or CORP/COEP ' +
+      'violations on <code>/assets/web/vendor/*</code>.</p>';
+  }
+  // Throwing here prevents the rest of the module from running with
+  // undefined globals (which would only produce confusing downstream
+  // errors in the console).
+  throw new Error('vendor globals missing (Terminal or openpty)');
+}
+
 const xterm = new Terminal();
 xterm.open(document.getElementById('terminal'));
 
