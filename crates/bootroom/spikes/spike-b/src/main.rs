@@ -15,7 +15,15 @@ use std::{
 };
 use tokio::net::TcpListener;
 
-const RESULT_PATH: &str = "crates/bootroom/spikes/spike-b/SPIKE-B-RESULT.md";
+/// WR-05: resolve the result file relative to the spike-b crate root
+/// rather than the caller's cwd. The previous `&'static str` was
+/// `"crates/bootroom/spikes/spike-b/SPIKE-B-RESULT.md"`, which only
+/// worked when invoked with the workspace root as cwd; running
+/// `cargo run -p spike-b` from anywhere else wrote the result to the
+/// wrong place (or silently failed via the swallowed `create_dir_all`).
+fn result_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("SPIKE-B-RESULT.md")
+}
 
 #[derive(Debug, Default)]
 struct Observations {
@@ -69,11 +77,13 @@ async fn main() -> Result<()> {
 
     let result = run_spike(&kernel).await;
 
+    let rp = result_path();
     match result {
         Ok((obs, verdict, chosen_path, rationale)) => {
             write_result(&obs, verdict, chosen_path, &rationale, &kernel)?;
             println!(
-                "Wrote {RESULT_PATH} (verdict: {verdict}, chosen_path: {chosen_path})"
+                "Wrote {} (verdict: {verdict}, chosen_path: {chosen_path})",
+                rp.display()
             );
             Ok(())
         }
@@ -85,7 +95,8 @@ async fn main() -> Result<()> {
             );
             write_result(&obs, "red", "playwright-subprocess", &rationale, &kernel)?;
             println!(
-                "Wrote {RESULT_PATH} (verdict: red, chosen_path: playwright-subprocess; error: {err})"
+                "Wrote {} (verdict: red, chosen_path: playwright-subprocess; error: {err})",
+                rp.display()
             );
             // Do not bail — Phase 4 needs the file. The verdict captures the failure.
             Ok(())
@@ -340,10 +351,11 @@ fn write_result(
     kernel: &Path,
 ) -> Result<()> {
     let body = format_result_md(obs, verdict, chosen_path, rationale, kernel);
-    if let Some(parent) = Path::new(RESULT_PATH).parent() {
+    let rp = result_path();
+    if let Some(parent) = rp.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    std::fs::write(RESULT_PATH, body).with_context(|| format!("write {RESULT_PATH}"))
+    std::fs::write(&rp, body).with_context(|| format!("write {}", rp.display()))
 }
 
 fn format_result_md(
