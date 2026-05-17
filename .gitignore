@@ -2,3 +2,5 @@
 **/*.rs.bk
 *.pdb
 .DS_Store
+crates/bootroom/spikes/spike-b/fixtures/*
+!crates/bootroom/spikes/spike-b/fixtures/.gitkeep

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bootroom-core", "crates/bootroom"]
+members = ["crates/bootroom-core", "crates/bootroom", "crates/bootroom/spikes/spike-b"]
 
 [workspace.package]
 version = "0.1.0"

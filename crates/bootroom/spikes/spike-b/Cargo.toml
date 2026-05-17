@@ -1,0 +1,27 @@
+[package]
+name = "spike-b"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Phase 1 Spike B: headless Chromium + SAB + qemu-wasm boot."
+
+[[bin]]
+name = "spike-b"
+path = "src/main.rs"
+
+[dependencies]
+bootroom = { path = "../.." }
+chromiumoxide = { version = "0.9.1", default-features = false }
+futures = "0.3"
+axum = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
