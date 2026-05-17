@@ -22,9 +22,25 @@ const REQUIRED: &[&str] = &[
 ];
 
 fn main() {
-    // Re-run whenever any file under assets/qemu changes (added, removed,
-    // mtime updated).
+    // WR-04: emit one rerun-if-changed per required file. The previous
+    // directory-only watch (`cargo:rerun-if-changed=assets/qemu`) only
+    // fires on entry add/remove on most filesystems; editing a file in
+    // place (e.g. updating module.js, or `cp`-overwriting the .wasm
+    // without `rm` first) did NOT trigger a rebuild and the binary
+    // ended up with stale embedded bytes.
+    for rel in REQUIRED {
+        println!("cargo:rerun-if-changed={rel}");
+    }
+    // Keep the directory-level watch too so adding NEW files (e.g. a
+    // future module-side helper script) re-triggers without having to
+    // edit REQUIRED first.
     println!("cargo:rerun-if-changed=assets/qemu");
+    // Also watch the embedded web/ tree: include_dir!("…/web") captures
+    // its contents at compile time but cargo otherwise only invalidates
+    // on Cargo.toml/package changes. Today web/ files are part of the
+    // crate package so the practical impact is small, but the watch
+    // makes the dependency explicit.
+    println!("cargo:rerun-if-changed=web");
     // Re-run whenever the escape-hatch env var flips.
     println!("cargo:rerun-if-env-changed=BOOTROOM_SKIP_QEMU_ASSET_CHECK");
 
