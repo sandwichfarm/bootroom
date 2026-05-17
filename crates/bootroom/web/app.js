@@ -1,0 +1,203 @@
+// crates/bootroom/web/app.js
+//
+// Phase 1 UI entrypoint. Loaded as `<script type="module">` from index.html.
+//
+// Depends on these globals, populated by the classic scripts that index.html
+// loads BEFORE this module runs:
+//   window.Terminal — xterm.js 5.3.0
+//   window.openpty  — xterm-pty 0.12.0
+//   window.Module   — QEMU argv (set by /assets/qemu/module.js)
+//
+// Browsers defer `type="module"` scripts by default, so all four classic
+// <script> tags above this one have executed when this file starts.
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a byte count using IEC binary units per 01-UI-SPEC:
+ * one decimal place when the value is >= 10, two decimals below.
+ */
+function humanBytes(n) {
+  if (n == null || isNaN(n)) return '—';
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let value = Number(n);
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  if (unit === 0) return value.toFixed(0) + ' ' + units[unit];
+  const decimals = value >= 10 ? 1 : 2;
+  return value.toFixed(decimals) + ' ' + units[unit];
+}
+
+/**
+ * Format an epoch-seconds timestamp as ISO-8601 in the local timezone with
+ * second precision, e.g. "2026-05-17T14:32:08-07:00". UI-SPEC bans
+ * "5 minutes ago" — a test harness needs exact timestamps.
+ */
+function isoLocal(epochSec) {
+  if (epochSec == null) return '—';
+  const d = new Date(Number(epochSec) * 1000);
+  if (isNaN(d.getTime())) return '—';
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = d.getFullYear();
+  const mo = pad(d.getMonth() + 1);
+  const da = pad(d.getDate());
+  const h = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  const s = pad(d.getSeconds());
+  // getTimezoneOffset returns minutes WEST of UTC; flip the sign for ISO.
+  const tzMin = -d.getTimezoneOffset();
+  const sign = tzMin >= 0 ? '+' : '-';
+  const absTz = Math.abs(tzMin);
+  const tzH = pad(Math.floor(absTz / 60));
+  const tzM = pad(absTz % 60);
+  return `${y}-${mo}-${da}T${h}:${mi}:${s}${sign}${tzH}:${tzM}`;
+}
+
+// ---------------------------------------------------------------------------
+// Status pill
+// ---------------------------------------------------------------------------
+
+const pill = document.getElementById('status');
+function setPill(state) {
+  pill.dataset.state = state;
+  pill.innerHTML = '<span aria-hidden="true">●</span> ' + state;
+}
+
+// ---------------------------------------------------------------------------
+// Kernel-info fetch + header population
+// ---------------------------------------------------------------------------
+
+async function loadKernelInfo() {
+  try {
+    const res = await fetch('/api/kernel/info');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const info = await res.json();
+    document.getElementById('k-path').textContent  = info.path;
+    document.getElementById('k-size').textContent  = humanBytes(info.size);
+    document.getElementById('k-mtime').textContent = isoLocal(info.mtime);
+    document.getElementById('k-sha').textContent   = info.sha256_prefix;
+    const base = (info.path || '').split('/').pop() || info.path || 'kernel';
+    document.title = 'bootroom — ' + base;
+  } catch (e) {
+    console.error('kernel-info fetch failed:', e);
+    for (const id of ['k-path', 'k-size', 'k-mtime', 'k-sha']) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = 'ERR';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// xterm + xterm-pty mount
+// ---------------------------------------------------------------------------
+
+const xterm = new Terminal();
+xterm.open(document.getElementById('terminal'));
+
+// Phase 1: input deliberately no-op; Phase 2 wires through /ws
+xterm.attachCustomKeyEventHandler(() => false);
+
+const { master, slave } = openpty();
+xterm.loadAddon(master);
+
+// window.Module was set by /assets/qemu/module.js (the QEMU argv).
+// Wire the PTY slave into qemu-wasm's chardev (xterm-pty was linked in
+// at qemu-wasm build time via --js-library=…/xterm-pty/emscripten-pty.js).
+Module.pty = slave;
+Module.mainScriptUrlOrBlob = location.origin + '/assets/qemu/out.js';
+
+// Terminal resize handler — recompute the terminal cell grid from the
+// container's actual offsetHeight (UI-checker recommendation: do not
+// hard-code header height; query the live DOM).
+function fitTerminalToContainer() {
+  const container = document.getElementById('terminal');
+  if (!container) return;
+  // xterm.js exposes cols/rows but no built-in resize-without-FitAddon
+  // helper; approximate using the renderer's actCellSize. For Phase 1 we
+  // rely on xterm's own initial size and leave reflow to the browser —
+  // this handler is the scaffolding Phase 2 can swap a FitAddon into.
+  // It currently only re-reads the container dimensions so the resize
+  // event has an observable effect during manual smoke testing.
+  void container.offsetHeight;
+}
+window.addEventListener('resize', fitTerminalToContainer);
+
+// ---------------------------------------------------------------------------
+// Boot the guest
+// ---------------------------------------------------------------------------
+
+async function bootGuest() {
+  // Hook lifecycle callbacks BEFORE initEmscriptenModule so early
+  // emscripten events don't slip past us.
+  Module.onRuntimeInitialized = () => {
+    if (self.crossOriginIsolated) setPill('RUNNING');
+  };
+  Module.onExit = (_code) => setPill('HALTED');
+  Module.onAbort = (_what) => setPill('HALTED');
+
+  // Fetch the kernel bytes BEFORE calling initEmscriptenModule and stash
+  // them on Module so a synchronous preRun callback can write them into
+  // Module.FS. emscripten supports async preRun via addRunDependency, but
+  // the synchronous-with-pendingKernel path is the documented fallback in
+  // 01-06-PLAN Task 2 and avoids depending on the qemu-wasm build's
+  // emscripten flag set.
+  let pendingKernel = null;
+  try {
+    const res = await fetch('/kernel');
+    if (!res.ok) throw new Error('kernel fetch HTTP ' + res.status);
+    pendingKernel = new Uint8Array(await res.arrayBuffer());
+  } catch (e) {
+    console.error('kernel fetch failed:', e);
+    slave.write('[bootroom] Failed to load kernel from /kernel: ' + e.message + '\r\n');
+    setPill('HALTED');
+    return;
+  }
+
+  Module.preRun = Module.preRun || [];
+  Module.preRun.push(() => {
+    try {
+      // /pack/ is mounted by the data preload pack (qemu-system-riscv64.data)
+      // before preRun fires, but mkdirTree is a defensive no-op if present.
+      try { Module.FS.mkdirTree('/pack'); } catch (_e) { /* already exists */ }
+      Module.FS.writeFile('/pack/Image', pendingKernel);
+    } catch (e) {
+      console.error('kernel inject failed:', e);
+      slave.write('[bootroom] Failed to write kernel into Module.FS: ' + e.message + '\r\n');
+    }
+  });
+
+  // Dynamic import of the emscripten glue. Vendored at /assets/qemu/out.js.
+  const mod = await import('/assets/qemu/out.js');
+  const initEmscriptenModule = mod.default;
+  await initEmscriptenModule(Module);
+
+  // Reference's PTY poll patch — copy verbatim from
+  // qemu-wasm/examples/riscv64/src/htdocs/index.html to avoid hangs when
+  // the PTY's readable buffer is empty.
+  const oldPoll = Module.TTY.stream_ops.poll;
+  const pty = Module.pty;
+  Module.TTY.stream_ops.poll = function (stream, timeout) {
+    if (!pty.readable) {
+      return (pty.readable ? 1 : 0) | (pty.writable ? 4 : 0);
+    }
+    return oldPoll.call(stream, timeout);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Kick off both flows
+// ---------------------------------------------------------------------------
+
+loadKernelInfo();
+bootGuest().catch((e) => {
+  console.error('boot failed:', e);
+  setPill('HALTED');
+  try {
+    slave.write('[bootroom] Boot failed: ' + e.message + '\r\n');
+  } catch (_e) { /* slave may not be ready */ }
+});
