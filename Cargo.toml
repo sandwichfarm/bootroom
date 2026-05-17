@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/bootroom-core", "crates/bootroom"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sandwich-farm/bootroom"
+authors = ["sandwich <sandwich.farm@protonmail.com>"]
+
+[workspace.dependencies]
+axum = "0.8.9"
+tower = "0.5.3"
+tower-http = { version = "0.6.10", features = ["set-header", "trace"] }
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "signal", "sync", "fs"] }
+tokio-util = { version = "0.7", features = ["io"] }
+clap = { version = "4.6.1", features = ["derive"] }
+include_dir = "0.7.4"
+mime_guess = "2.0.5"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1"
+anyhow = "1.0.102"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+sha2 = "0.10"
+hex = "0.4"
+bootroom-core = { path = "crates/bootroom-core" }
+
+[profile.release]
+# Defaults; Phase 6 may tune LTO.
