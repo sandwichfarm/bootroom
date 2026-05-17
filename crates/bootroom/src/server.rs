@@ -92,8 +92,8 @@ mod tests {
     use tower::ServiceExt;
 
     /// CR-01 regression: `--host ::1` must parse to a valid IPv6 loopback
-    /// SocketAddr rather than mis-parsing the legacy `"{host}:{port}"`
-    /// concatenation. We construct the SocketAddr the same way `run` does
+    /// `SocketAddr` rather than mis-parsing the legacy `"{host}:{port}"`
+    /// concatenation. We construct the `SocketAddr` the same way `run` does
     /// without actually binding (no port collisions on CI).
     #[test]
     fn test_ipv6_loopback_host_parses() {

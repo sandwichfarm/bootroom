@@ -36,16 +36,43 @@ pub async fn serve_asset(
     serve_one(&s, &rest).await
 }
 
+/// Disk-branch outcome (CR-02): distinguishes "file is genuinely absent;
+/// fall through to embedded" from "file exists but resolves outside the
+/// assets-dir root; hard-reject and do NOT consult the embedded fallback".
+enum DiskOutcome {
+    /// Serve this response from disk.
+    Hit(Response),
+    /// File is not on disk; caller may fall through to embedded.
+    Miss,
+    /// Path-traversal or unexpected I/O error; respond directly and do
+    /// NOT consult the embedded fallback. This closes the race where a
+    /// traversal target that exists on disk but fails canonicalization
+    /// (permission denied, race-removed) would silently fall through to
+    /// an embedded copy with no security check.
+    Reject(Response),
+}
+
 async fn serve_one(state: &AppState, requested: &str) -> Response {
-    // Reject obvious traversal before touching disk or embed.
-    if requested.split('/').any(|seg| seg == "..") {
-        return (StatusCode::BAD_REQUEST, "invalid path: .. not allowed")
-            .into_response();
+    // Reject obvious traversal and dangerous separators before touching
+    // disk or embed. Defense in depth — axum decodes percent-escapes
+    // before invoking the handler so URL-encoded `%2e%2e` arrives here
+    // as `..` and is caught, but the explicit `\0` and `\\` rejections
+    // guard against future routing changes that might bypass the URL
+    // decoder.
+    for seg in requested.split('/') {
+        if seg == ".." || seg.contains('\\') || seg.contains('\0') {
+            return (
+                StatusCode::BAD_REQUEST,
+                "invalid path: traversal or unsafe separator",
+            )
+                .into_response();
+        }
     }
     // Disk override first.
     if let Some(root) = &state.assets_dir {
-        if let Some(resp) = try_disk(root, requested).await {
-            return resp;
+        match try_disk(state, root, requested).await {
+            DiskOutcome::Hit(resp) | DiskOutcome::Reject(resp) => return resp,
+            DiskOutcome::Miss => {} // fall through to embedded
         }
     }
     // Embedded fallback.
@@ -71,26 +98,91 @@ fn split_subtree(req: &str) -> Option<(&'static Dir<'static>, &str)> {
     }
 }
 
-async fn try_disk(root: &Path, requested: &str) -> Option<Response> {
+async fn try_disk(
+    state: &AppState,
+    root: &Path,
+    requested: &str,
+) -> DiskOutcome {
     // Path layout: <root>/web/... or <root>/assets/qemu/...
     let on_disk: PathBuf = if let Some(rest) = requested.strip_prefix("web/") {
         root.join("web").join(rest)
     } else if let Some(rest) = requested.strip_prefix("qemu/") {
         root.join("assets/qemu").join(rest)
     } else {
-        return None;
+        return DiskOutcome::Miss;
     };
 
-    // V12: canonicalize and confirm descendant.
-    let canon = tokio::fs::canonicalize(&on_disk).await.ok()?;
-    let root_canon = tokio::fs::canonicalize(root).await.ok()?;
+    // V12: canonicalize and confirm descendant. We distinguish ENOENT
+    // ("genuine miss; fall through to embed") from other errors
+    // (permission denied, EINVAL, race conditions; hard-reject so we
+    // never silently fall through to an embedded copy).
+    let canon = match tokio::fs::canonicalize(&on_disk).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return DiskOutcome::Miss;
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                path = %on_disk.display(),
+                "asset canonicalize failed; hard-rejecting to avoid embedded fall-through"
+            );
+            return DiskOutcome::Reject(
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "asset path could not be resolved",
+                )
+                    .into_response(),
+            );
+        }
+    };
+
+    // Prefer the precomputed canonical root from AppState (CR-02): avoids
+    // a per-request recursive canonicalize and closes the race window
+    // where the root's canonical form changes between requests.
+    let root_canon = match state.assets_dir_canon.as_ref() {
+        Some(rc) => rc.clone(),
+        None => match tokio::fs::canonicalize(root).await {
+            Ok(rc) => rc,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "assets_dir canonicalize failed; hard-rejecting"
+                );
+                return DiskOutcome::Reject(
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "assets-dir could not be resolved",
+                    )
+                        .into_response(),
+                );
+            }
+        },
+    };
+
     if !canon.starts_with(&root_canon) {
-        return Some(
+        return DiskOutcome::Reject(
             (StatusCode::BAD_REQUEST, "path escapes --assets-dir").into_response(),
         );
     }
-    let bytes = tokio::fs::read(&canon).await.ok()?;
-    Some(ok_bytes(bytes, requested))
+    match tokio::fs::read(&canon).await {
+        Ok(bytes) => DiskOutcome::Hit(ok_bytes(bytes, requested)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => DiskOutcome::Miss,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                path = %canon.display(),
+                "asset read failed after canonicalize"
+            );
+            DiskOutcome::Reject(
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "asset read failed",
+                )
+                    .into_response(),
+            )
+        }
+    }
 }
 
 fn ok_bytes(bytes: Vec<u8>, hint_path: &str) -> Response {
@@ -217,5 +309,43 @@ mod tests {
         .await;
         assert_eq!(resp.status(), StatusCode::OK);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// CR-02 regression: when there is NO disk override (embedded-only
+    /// branch), a literal `..` segment must be rejected at the early
+    /// guard rather than reaching `Dir::get_file`. Previously the
+    /// security control was only documented as the disk-branch
+    /// canonicalize check; this test asserts the unified guard.
+    #[tokio::test]
+    async fn test_serve_asset_embedded_only_rejects_traversal() {
+        let resp = serve_asset(
+            State(state(None)),
+            AxumPath("web/../qemu/qemu-system-riscv64.wasm".into()),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// CR-02 regression: NUL byte in a path segment is rejected even
+    /// without a disk override.
+    #[tokio::test]
+    async fn test_serve_asset_embedded_only_rejects_nul() {
+        let resp = serve_asset(
+            State(state(None)),
+            AxumPath("web/\0evil".into()),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// CR-02 regression: backslash in a path segment is rejected.
+    #[tokio::test]
+    async fn test_serve_asset_embedded_only_rejects_backslash() {
+        let resp = serve_asset(
+            State(state(None)),
+            AxumPath("web\\vendor\\xterm.js".into()),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }
