@@ -25,11 +25,23 @@ qemu-assets:
 	@command -v docker >/dev/null || { echo "ERROR: docker is required to (re)build qemu-wasm artifacts" >&2; exit 1; }
 	@test -d $(QEMU_WASM_DIR) || { echo "ERROR: $(QEMU_WASM_DIR) submodule missing; run 'git submodule update --init --recursive'" >&2; exit 1; }
 	@test -f $(QEMU_WASM_DIR)/Dockerfile || { echo "ERROR: $(QEMU_WASM_DIR)/Dockerfile missing" >&2; exit 1; }
+	@echo ">>> Step 0/5: Patching upstream Dockerfile in-place (idempotent)..."
+	@# Upstream zlib.net retired the 1.3.1 .tar.xz; redirect to the zlib.net/fossils/ tarball.
+	@# This patch is idempotent: re-running it on an already-patched file is a no-op.
+	@# These changes are NOT committed to the qemu-wasm submodule — they're applied at build time only.
+	@if grep -q "https://zlib.net/zlib-" $(QEMU_WASM_DIR)/Dockerfile; then \
+	  sed -i 's|https://zlib.net/zlib-$$ZLIB_VERSION.tar.xz|https://zlib.net/fossils/zlib-$$ZLIB_VERSION.tar.gz|' $(QEMU_WASM_DIR)/Dockerfile; \
+	  sed -i 's|tar xJC /zlib|tar xzC /zlib|' $(QEMU_WASM_DIR)/Dockerfile; \
+	  echo "  patched: zlib download URL -> fossils/.tar.gz"; \
+	fi
 	@echo ">>> Step 1/5: Building qemu-wasm builder image (one-time; ~10-20 minutes on first run)..."
 	cd $(QEMU_WASM_DIR) && docker build -t buildqemu - < Dockerfile
 	@echo ">>> Step 2/5: Starting builder container..."
 	-docker rm -f $(QEMU_BUILDER) >/dev/null 2>&1
-	docker run --rm -d --name $(QEMU_BUILDER) -v $(PWD)/$(QEMU_WASM_DIR):/qemu/:ro buildqemu
+	@# Mount the submodule rw (NOT :ro) because QEMU's configure runs `git init dtc`
+	@# inside /qemu/subprojects/ to fetch libfdt when the system libfdt isn't available
+	@# (it isn't, under emscripten). A read-only mount fails the configure step.
+	docker run --rm -d --name $(QEMU_BUILDER) -v $(PWD)/$(QEMU_WASM_DIR):/qemu/ buildqemu
 	@echo ">>> Step 3/5: Compiling qemu-system-riscv64 inside the builder..."
 	docker exec $(QEMU_BUILDER) /bin/sh -c '\
 	  EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=2300MB -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js" && \
