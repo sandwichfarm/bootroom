@@ -181,3 +181,58 @@ body.dark {
   width: 100% !important;
   height: 100% !important;
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 2 buttons + IDLE pill (UI-SPEC additions)                     */
+/* ------------------------------------------------------------------ */
+
+.hdr-btns {
+  display: flex;
+  gap: var(--sm);
+}
+
+.hdr-btns button,
+.term-ctrls button {
+  background: var(--surface);
+  color: var(--fg);
+  border: 0;
+  padding: var(--sm) var(--md);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.hdr-btns button:hover,
+.term-ctrls button:hover {
+  box-shadow: inset 0 1px 0 0 var(--fg-muted);
+}
+
+.hdr-btns button:focus-visible,
+.term-ctrls button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.hdr-btns button:disabled,
+.term-ctrls button:disabled {
+  color: var(--fg-muted);
+  cursor: not-allowed;
+}
+
+.term-ctrls {
+  position: absolute;
+  top: var(--sm);
+  right: var(--sm);
+  z-index: 10;
+  display: flex;
+  gap: var(--sm);
+}
+
+.pill[data-state="IDLE"] {
+  background: var(--fg-muted);
+  color: var(--fg);
+}
