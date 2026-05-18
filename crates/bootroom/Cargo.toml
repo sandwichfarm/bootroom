@@ -22,7 +22,12 @@ bootroom-core.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 axum = { workspace = true, features = ["ws"] }
-base64.workspace = true
+# base64 is intentionally NOT pulled in here in Phase 2: the wire format
+# uses base64 only on the browser side (native btoa/atob in funnel.js).
+# Phase 4's headless `bootroom run` driver will re-add this when it
+# needs to assert against captured serial output; the workspace-level
+# declaration is retained in /Cargo.toml so the future add-back is a
+# one-line change (WR-02 in the Phase 2 review).
 futures-util.workspace = true
 open.workspace = true
 tower.workspace = true
