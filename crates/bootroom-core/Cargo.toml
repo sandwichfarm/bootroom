@@ -8,6 +8,12 @@ repository.workspace = true
 authors.workspace = true
 description = "Pure types and protocol definitions for bootroom (no I/O)."
 
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints.rust]
 unsafe_code = "forbid"
 

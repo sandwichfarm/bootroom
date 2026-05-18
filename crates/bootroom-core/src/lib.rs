@@ -6,6 +6,58 @@
 
 #![cfg_attr(not(test), deny(unsafe_code))]
 
+use serde::{Deserialize, Serialize};
+
+/// Wire-level message exchanged over the `/ws` endpoint.
+///
+/// Externally tagged via `#[serde(tag = "type")]`, producing JSON of the form
+/// `{"type": "SerialIn", "data": "..."}`. Byte payloads (`SerialIn`,
+/// `SerialOut`) are base64-encoded so the protocol stays JSON-only on the
+/// wire — see `02-CONTEXT.md` decision "/ws message protocol — tagged JSON
+/// only".
+///
+/// Note: `#[serde(deny_unknown_fields)]` is intentionally NOT applied —
+/// Phase 4 may add variants additively and older clients should ignore
+/// unknown fields gracefully (02-RESEARCH.md Open Question 3).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum WsMessage {
+    /// Host -> guest. Bytes injected into guest stdin. `data` is base64.
+    SerialIn { data: String },
+    /// Guest -> host. Bytes the guest emitted on serial. `data` is base64.
+    /// Browser emits these for the server to log; server may forward in
+    /// Phase 4 headless mode.
+    SerialOut { data: String },
+    /// Server -> client. Authoritative guest status pill state. When the
+    /// `/ws` connection is live this overrides the browser's local view.
+    State { state: GuestState },
+    /// Client -> server. Asks the server (and observers) to log a Launch
+    /// action; the browser then page-reloads to re-instantiate qemu-wasm.
+    Launch,
+    /// Client -> server. Asks the server (and observers) to log a Reset
+    /// action; in Phase 2 this is identical to `Launch` from the
+    /// browser's perspective.
+    Reset,
+    /// Server -> client on connect. `version` is the server's
+    /// `CARGO_PKG_VERSION`. Mismatched clients log a warning but proceed.
+    Hello { version: String },
+}
+
+/// Status pill state machine. Default serde representation: bare string
+/// variant (`"Idle" | "Loading" | "Running" | "Halted"`).
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuestState {
+    /// Initial render — before xterm + qemu init.
+    Idle,
+    /// xterm mounted, qemu-wasm Module not yet `onRuntimeInitialized`.
+    Loading,
+    /// `onRuntimeInitialized` fired AND first `SerialOut` byte seen —
+    /// the guest is actually executing.
+    Running,
+    /// `Module.onExit` / `onAbort`, OR server pushed `State { Halted }`.
+    Halted,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
