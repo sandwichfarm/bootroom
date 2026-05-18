@@ -258,8 +258,21 @@ function recomputePillLocal() {
 // Pacing config for WS-arriving SerialIn (WS-03). Default 15ms per
 // 02-CONTEXT.md. Override via ?pacing=N query param. Negative values
 // are clamped to 0 (no pacing).
+//
+// WR-04: validate the query value explicitly. Math.max(0, Number('abc'))
+// is NaN, and setTimeout(_, NaN) silently coerces to 0 — which is the
+// opposite of fail-safe (the user asked to SLOW DOWN injection because
+// the kernel was missing keystrokes, and instead got firehose pacing).
+// Fall back to the documented 15ms default on any non-finite or negative
+// input, with a one-line console.warn so typos are discoverable.
 const urlParams = new URLSearchParams(location.search);
-const pacingMs = Math.max(0, Number(urlParams.get('pacing') ?? 15));
+const PACING_DEFAULT_MS = 15;
+const rawPacing = urlParams.get('pacing');
+const parsedPacing = rawPacing === null ? PACING_DEFAULT_MS : Number(rawPacing);
+const pacingMs = (Number.isFinite(parsedPacing) && parsedPacing >= 0)
+  ? parsedPacing
+  : (console.warn('[bootroom] ?pacing=' + rawPacing + ' is not a non-negative number; falling back to ' + PACING_DEFAULT_MS + 'ms'),
+     PACING_DEFAULT_MS);
 
 // Module-scope so the SerialOut mirror (subscribed on slave.onReadable
 // below) can read it after this module finishes evaluating. Assigned
