@@ -33,7 +33,11 @@
       <dt>mtime</dt><dd id="k-mtime">—</dd>
       <dt>sha256</dt><dd id="k-sha" class="accent">—</dd>
     </dl>
-    <span id="status" class="pill" data-state="LOADING"><span aria-hidden="true">●</span> LOADING</span>
+    <div class="hdr-btns">
+      <button id="btn-launch" type="button">LAUNCH</button>
+      <button id="btn-reset" type="button">RESET</button>
+    </div>
+    <span id="status" class="pill" data-state="IDLE"><span aria-hidden="true">●</span> IDLE</span>
   </header>
 
   <div id="iso-banner" role="alert" hidden>
@@ -41,7 +45,12 @@
     <p>Bootroom requires COOP: same-origin and COEP: require-corp on every response. Open DevTools → Network and inspect the response headers on this page.</p>
   </div>
 
-  <div id="terminal"></div>
+  <div id="terminal">
+    <div class="term-ctrls">
+      <button id="btn-clear" type="button">CLEAR</button>
+      <button id="btn-copy" type="button">COPY</button>
+    </div>
+  </div>
 
   <!--
     Pre-initialize the global Module with locateFile so emscripten's loaders
