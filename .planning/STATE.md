@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-04-PLAN.md (web/funnel.js single-writer + base64 + keyEventToBytes)
-last_updated: "2026-05-18T10:16:48.370Z"
+stopped_at: Completed 02-05-PLAN.md (LAUNCH/RESET/CLEAR/COPY markup + IDLE pill CSS — palette-pure)
+last_updated: "2026-05-18T10:22:53.518Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 12
-  percent: 80
+  completed_plans: 14
+  percent: 93
 ---
 
 # State: bootroom
@@ -28,12 +28,12 @@ progress:
 ## Current Position
 
 Phase: 2 (WebSocket + Live Serial) — EXECUTING
-Plan: 3 of 6 complete (01 done, 03 done, 04 done; next plan in wave order: 02-02 — /ws axum handler)
+Plan: 4 of 6 complete (01 done, 03 done, 04 done, 05 done; remaining: 02-02 /ws axum handler, 02-06 WS lifecycle wiring)
 
 - **Phase:** 2 — WebSocket + Live Serial
-- **Plan:** 02-04 complete — `crates/bootroom/web/funnel.js` is a standalone vanilla ES module exporting `Funnel` (single-writer to xterm-pty `slave.write`, draining-flag pattern from Pitfall #7), `bytesToB64`/`b64ToBytes` (chunked `String.fromCharCode` for Latin-1-safe handling of bytes ≥ 0x80 — Pitfall #3), and `keyEventToBytes` (Enter/Backspace/Tab/Escape/arrows/Home/End/PageUp/PageDown/Delete/Ctrl-letter/printable). Per-byte pacing semantics: `pacingMs` delays BETWEEN bytes (5-byte enqueue with pacingMs=20 = 80ms total). No DOM coupling, no xterm coupling, no imports — fully self-contained; plan 02-06 will import it for the WS lifecycle wiring. Inline JSDoc manual test plan covers all five behaviors (single-writer, pacing, concurrency, base64 round-trip, keyEventToBytes coverage) since Phase 2 has no JS runner per 02-VALIDATION.md. Embedded into the binary automatically via existing `include_dir!` over `web/`. cargo build --workspace clean. WS-02 + WS-03 mitigations now ready for wave-2 wiring. Single commit cb40545.
+- **Plan:** 02-05 complete — `crates/bootroom/web/index.html` + `style.css` now ship the LAUNCH/RESET/CLEAR/COPY button markup and the IDLE pill state per 02-UI-SPEC.md. Header has a new `.hdr-btns` flex div (LAUNCH + RESET) between the kinfo dl and the status pill; the pill keeps `margin-left: auto`. `#terminal` is now a paired element containing `.term-ctrls` as its first child (CLEAR + COPY) — absolute-positioned top-right overlay anchored on the pre-existing `position: relative` of `#terminal`, with `z-index: 10` floating over xterm's later-appended render layers. Initial pill state changed from `LOADING` to `IDLE` per UI-SPEC; plan 06 drives the state machine. CSS appended at end of style.css: shared mono-button styling (`var(--surface)` bg, `var(--fg)` text, no border, 12px 600 uppercase 0.05em letter-spacing, `cursor: pointer`); `:hover` uses `box-shadow: inset 0 1px 0 0 var(--fg-muted)` so layout doesn't shift (no border, no accent on hover, no transition — terminal aesthetic stays flat); `:focus-visible` is the only new use of `--accent` (1px outline with `outline-offset: 1px`); `:disabled` greys to `var(--fg-muted)` + `cursor: not-allowed`; `.pill[data-state="IDLE"]` paints with `var(--fg-muted)` bg + `var(--fg)` text. ZERO new hex values introduced — palette count remains 10. All four buttons are real `<button type="button">` elements with visible text labels (a11y floor satisfied). cargo build --workspace clean. DOM contract (btn-launch / btn-reset / btn-clear / btn-copy + .pill[data-state="IDLE"] / .hdr-btns button:disabled CSS hooks) now exposed for plan 06 wiring. UI-04, UI-06, UI-08, UI-09 surface affordances satisfied. Commits da2767b + 2f29501.
 - **Status:** Executing Phase 2
-- **Progress:** [████████░░] 80%
+- **Progress:** [█████████░] 93%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Carried from `PROJECT.md` Key Decisions:
 - [Phase 2]: 02-01: `WsMessage` (serde-tagged enum, six variants: SerialIn/SerialOut/State/Launch/Reset/Hello) and `GuestState` (Idle/Loading/Running/Halted, derives Copy) defined in `bootroom-core/src/lib.rs`. `#[serde(tag = "type")]` produces `{"type":"<variant>",...}` wire shape; no `#[serde(deny_unknown_fields)]` so Phase 4 can extend additively (RESEARCH Open Q3). serde wired to `[dependencies]`, serde_json to `[dev-dependencies]` (runtime callers pass strings). Six round-trip tests pin the wire format. TDD RED (a926c45) → GREEN (1d704d7). One clippy `doc_markdown` deviation auto-fixed (quoted `SerialOut` in a doc comment). Plan 02 (axum /ws handler) and Phase 4 headless `run` both import this enum unchanged — WS-04 single source of truth established.
 - [Phase 2]: 02-03: --no-open flag added to ServeArgs (default false = auto-open is on); open::that_detached called after listener bind, gated on !args.no_open. Detached spawn variant prevents misconfigured launchers from blocking the parent. Failure logs tracing::warn + emits UI-SPEC stderr line and keeps serving (never fatal). URL is format!("http://{bound}") so no user-controlled string reaches the launcher (T-02-04). All Phase 2 Cargo deps wired together: open=5.3.5, base64=0.22.1, futures-util=0.3.32, dev-only tokio-tungstenite=0.29.0; axum gains ws feature on bootroom crate (plan 02-02 needs zero Cargo.toml edits). SERV-06 subprocess test uses CARGO_BIN_EXE_bootroom + ChildGuard RAII + mpsc reader threads (mirrors WR-06). TDD RED 8e9e4fe -> GREEN c68672f; one clippy needless_continue auto-fix folded into GREEN.
 - [Phase 2]: 02-04: Used ES #drain private method syntax in funnel.js — enforces single-drain invariant via language syntax rather than convention
+- [Phase 2]: 02-05: Button hover uses inset box-shadow in --fg-muted; accent reserved for focus-visible ring only (no new hex values; palette purity preserved at count 10)
 
 ### Architecture (from research)
 
@@ -101,10 +102,10 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-18T10:16:48.362Z
-- **Stopped at:** Completed 02-04-PLAN.md (web/funnel.js single-writer + base64 + keyEventToBytes)
-- **Next session:** Execute Phase 2 plan 02 (`/ws` axum handler + integration tests incl. COOP/COEP regression) — imports `bootroom_core::{WsMessage, GuestState}` from this plan.
-- **Context to reload:** `02-CONTEXT.md` (locked decisions), `02-RESEARCH.md` (axum 0.8 WebSocket patterns), `.planning/phases/02-websocket-live-serial/02-01-SUMMARY.md` (this plan), `crates/bootroom-core/src/lib.rs` (the enum the handler imports), `crates/bootroom/src/server.rs` (where the new `/ws` route lands).
+- **Last session:** 2026-05-18T10:22:53.511Z
+- **Stopped at:** Completed 02-05-PLAN.md (LAUNCH/RESET/CLEAR/COPY markup + IDLE pill CSS — palette-pure)
+- **Next session:** Execute Phase 2 remaining plans: 02-02 (`/ws` axum handler + integration tests incl. COOP/COEP regression) and 02-06 (WS lifecycle wiring — imports `funnel.js` from 02-04 and queries the DOM contract from 02-05).
+- **Context to reload:** `02-CONTEXT.md` (locked decisions), `02-UI-SPEC.md` (button/pill state machine for plan 06), `02-RESEARCH.md` (axum 0.8 WebSocket patterns for plan 02), `.planning/phases/02-websocket-live-serial/02-05-SUMMARY.md` (DOM contract this plan exposes), `crates/bootroom/web/index.html`, `crates/bootroom/web/style.css`, `crates/bootroom/web/funnel.js`, `crates/bootroom-core/src/lib.rs`.
 
 ---
 *State initialized: 2026-05-17 via gsd-roadmapper*

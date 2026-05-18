@@ -31,12 +31,12 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **UI-01**: Page boots `qemu-system-riscv64.wasm` using qemu-wasm's xterm-pty integration, with the supplied kernel loaded into the guest.
 - [ ] **UI-02**: Live serial console rendered via xterm.js, mounted on the xterm-pty `slave` (= guest `ttyS0`).
 - [ ] **UI-03**: Serial console supports free-form keyboard input written through to the guest.
-- [ ] **UI-04**: Console has "clear" and "copy all" controls.
+- [x] **UI-04**: Console has "clear" and "copy all" controls.
 - [x] **UI-05**: Page displays a `crossOriginIsolated` probe banner with a fix hint when SAB is unavailable.
-- [ ] **UI-06**: Status pill shows guest state (Idle / Loading / Running / Halted).
+- [x] **UI-06**: Status pill shows guest state (Idle / Loading / Running / Halted).
 - [x] **UI-07**: Header shows kernel info: path, size, mtime.
-- [ ] **UI-08**: "Launch" button (re)boots the guest with the freshest kernel build.
-- [ ] **UI-09**: "Reset" button restarts the guest with the currently-loaded kernel (no reload).
+- [x] **UI-08**: "Launch" button (re)boots the guest with the freshest kernel build.
+- [x] **UI-09**: "Reset" button restarts the guest with the currently-loaded kernel (no reload).
 
 ### WebSocket Bridge
 
@@ -160,12 +160,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-01 | Phase 1 — Walking Skeleton | Complete |
 | UI-02 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-03 | Phase 2 — WebSocket + Live Serial | Pending |
-| UI-04 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-04 | Phase 2 — WebSocket + Live Serial | Complete |
 | UI-05 | Phase 1 — Walking Skeleton | Complete |
-| UI-06 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-06 | Phase 2 — WebSocket + Live Serial | Complete |
 | UI-07 | Phase 1 — Walking Skeleton | Complete |
-| UI-08 | Phase 2 — WebSocket + Live Serial | Pending |
-| UI-09 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-08 | Phase 2 — WebSocket + Live Serial | Complete |
+| UI-09 | Phase 2 — WebSocket + Live Serial | Complete |
 | WS-01 | Phase 2 — WebSocket + Live Serial | Pending |
 | WS-02 | Phase 2 — WebSocket + Live Serial | Complete |
 | WS-03 | Phase 2 — WebSocket + Live Serial | Complete |
