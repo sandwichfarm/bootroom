@@ -130,8 +130,12 @@ fn serve_no_open_returns_listener_without_launching_browser() {
                     startup_line = Some(line);
                     break;
                 }
+                // Non-matching line — keep draining; the startup banner may
+                // be preceded by tracing-subscriber init output.
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Loop condition re-checks the deadline; nothing to do here.
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }

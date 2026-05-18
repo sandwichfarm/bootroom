@@ -40,4 +40,13 @@ pub struct ServeArgs {
     /// Intended for bootroom development — end users should leave this unset.
     #[arg(long, value_name = "PATH")]
     pub assets_dir: Option<PathBuf>,
+
+    /// Do not auto-open the default browser on start.
+    ///
+    /// By default `bootroom serve` opens the harness URL in the user's
+    /// default browser via `open::that_detached` once the listener is bound.
+    /// Pass `--no-open` for headless / CI usage or when running under a
+    /// supervisor that opens the browser itself.
+    #[arg(long)]
+    pub no_open: bool,
 }

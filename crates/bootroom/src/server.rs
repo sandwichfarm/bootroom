@@ -73,6 +73,28 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     // CONTEXT.md D-04: exact startup line.
     println!("Serving bootroom on http://{bound} (Ctrl-C to stop)");
 
+    // SERV-06: auto-open the harness URL in the user's default browser unless
+    // --no-open was passed. `that_detached` spawns the launcher detached from
+    // the parent so a misconfigured xdg-open / open / start cannot block the
+    // server (threat T-02-05 mitigation). Failure is non-fatal: we keep
+    // serving so the user can paste the URL manually.
+    if !args.no_open {
+        let url = format!("http://{bound}");
+        match open::that_detached(&url) {
+            Ok(()) => tracing::info!(%url, "opened harness URL in default browser"),
+            Err(e) => {
+                // UI-SPEC Copywriting Contract: stderr-only fallback line.
+                // The URL itself was already printed to stdout above; stderr
+                // owns the diagnostic so scripts piping stdout get a clean
+                // URL line.
+                eprintln!(
+                    "Could not open browser automatically — open the URL above manually."
+                );
+                tracing::warn!(error = %e, "open::that_detached failed");
+            }
+        }
+    }
+
     axum::serve(listener, app).await.context("axum::serve exited")?;
     Ok(())
 }
