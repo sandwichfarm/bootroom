@@ -266,13 +266,30 @@ const pacingMs = Math.max(0, Number(urlParams.get('pacing') ?? 15));
 // inside connectWs(); may be null between disconnect and reconnect.
 let ws = null;
 
+// WR-03: dedupe reconnects. Both `onclose` and the synchronous
+// `new WebSocket` catch fall through to scheduleReconnect; without a
+// guard, an `error` event followed immediately by `close` (the common
+// "server died" sequence) plus the constructor-throws edge could
+// stack two pending timers and rapid-fire two connectWs calls. Also
+// guards the cross-instance race where a stale prior socket's onclose
+// fires after a fresh one has been opened.
+let reconnectTimer = null;
+
+function scheduleReconnect() {
+  if (reconnectTimer !== null) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWs();
+  }, 1000);
+}
+
 function connectWs() {
   const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
   try {
     ws = new WebSocket(url);
   } catch (e) {
     console.warn('[bootroom] /ws constructor failed:', e);
-    setTimeout(connectWs, 1000);
+    scheduleReconnect();
     return;
   }
   ws.onopen = () => { /* nothing — first frame is server Hello, handled below */ };
@@ -284,7 +301,7 @@ function connectWs() {
   };
   ws.onclose = () => {
     try { slave.write('[bootroom] /ws disconnected; reconnecting…\r\n'); } catch (_e) {}
-    setTimeout(connectWs, 1000); // naive retry per <deferred>; T-02-25 accept
+    scheduleReconnect(); // naive retry per <deferred>; T-02-25 accept
   };
   ws.onerror = (e) => { console.warn('[bootroom] /ws error:', e); };
 }
