@@ -40,7 +40,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### WebSocket Bridge
 
-- [ ] **WS-01**: Single `/ws` endpoint relays `SerialIn` (host→guest bytes) and `SerialOut` (guest→host bytes).
+- [x] **WS-01**: Single `/ws` endpoint relays `SerialIn` (host→guest bytes) and `SerialOut` (guest→host bytes).
 - [x] **WS-02**: All host→guest writes are funneled through a single sender to prevent byte-interleaving between UI input and scenarios.
 - [x] **WS-03**: Inter-character pacing (default ~10–20ms, configurable) on injected byte sequences.
 - [x] **WS-04**: Message protocol is serde-tagged JSON; types live in `bootroom-core`.
@@ -166,7 +166,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-07 | Phase 1 — Walking Skeleton | Complete |
 | UI-08 | Phase 2 — WebSocket + Live Serial | Complete |
 | UI-09 | Phase 2 — WebSocket + Live Serial | Complete |
-| WS-01 | Phase 2 — WebSocket + Live Serial | Pending |
+| WS-01 | Phase 2 — WebSocket + Live Serial | Complete |
 | WS-02 | Phase 2 — WebSocket + Live Serial | Complete |
 | WS-03 | Phase 2 — WebSocket + Live Serial | Complete |
 | WS-04 | Phase 2 — WebSocket + Live Serial | Complete (02-01) |

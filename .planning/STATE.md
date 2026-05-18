@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 02-05-PLAN.md (LAUNCH/RESET/CLEAR/COPY markup + IDLE pill CSS — palette-pure)
-last_updated: "2026-05-18T10:22:53.518Z"
+last_updated: "2026-05-18T10:28:20.566Z"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -28,12 +28,12 @@ progress:
 ## Current Position
 
 Phase: 2 (WebSocket + Live Serial) — EXECUTING
-Plan: 4 of 6 complete (01 done, 03 done, 04 done, 05 done; remaining: 02-02 /ws axum handler, 02-06 WS lifecycle wiring)
+Plan: 5 of 6 complete (01 done, 02 done, 03 done, 04 done, 05 done; remaining: 02-06 WS lifecycle wiring)
 
 - **Phase:** 2 — WebSocket + Live Serial
-- **Plan:** 02-05 complete — `crates/bootroom/web/index.html` + `style.css` now ship the LAUNCH/RESET/CLEAR/COPY button markup and the IDLE pill state per 02-UI-SPEC.md. Header has a new `.hdr-btns` flex div (LAUNCH + RESET) between the kinfo dl and the status pill; the pill keeps `margin-left: auto`. `#terminal` is now a paired element containing `.term-ctrls` as its first child (CLEAR + COPY) — absolute-positioned top-right overlay anchored on the pre-existing `position: relative` of `#terminal`, with `z-index: 10` floating over xterm's later-appended render layers. Initial pill state changed from `LOADING` to `IDLE` per UI-SPEC; plan 06 drives the state machine. CSS appended at end of style.css: shared mono-button styling (`var(--surface)` bg, `var(--fg)` text, no border, 12px 600 uppercase 0.05em letter-spacing, `cursor: pointer`); `:hover` uses `box-shadow: inset 0 1px 0 0 var(--fg-muted)` so layout doesn't shift (no border, no accent on hover, no transition — terminal aesthetic stays flat); `:focus-visible` is the only new use of `--accent` (1px outline with `outline-offset: 1px`); `:disabled` greys to `var(--fg-muted)` + `cursor: not-allowed`; `.pill[data-state="IDLE"]` paints with `var(--fg-muted)` bg + `var(--fg)` text. ZERO new hex values introduced — palette count remains 10. All four buttons are real `<button type="button">` elements with visible text labels (a11y floor satisfied). cargo build --workspace clean. DOM contract (btn-launch / btn-reset / btn-clear / btn-copy + .pill[data-state="IDLE"] / .hdr-btns button:disabled CSS hooks) now exposed for plan 06 wiring. UI-04, UI-06, UI-08, UI-09 surface affordances satisfied. Commits da2767b + 2f29501.
+- **Plan:** 02-02 complete — `crates/bootroom/src/ws.rs` (134 LOC) implements Pattern 1: `WebSocketUpgrade.on_upgrade(socket → split → bounded mpsc::channel::<WsMessage>(32) → spawned writer task)`, with `handle_wire` dispatching each variant to tracing (SerialIn/SerialOut → trace, Launch/Reset → info, client-sent State/Hello → warn + continue per T-02-17). Server emits `Hello { version: env!(CARGO_PKG_VERSION) }` as the first frame on every connection. Route registered as `.route("/ws", axum::routing::any(crate::ws::ws_handler))` — `any` over `get` per 02-RESEARCH.md Pattern 1 to leave room for future protocol negotiation. Malformed JSON / unexpected binary frames log + continue; only Close or recv error breaks the reader loop (T-02-16). Three integration tests in `crates/bootroom/tests/ws_roundtrip.rs` pin the contract: `ws_handshake_emits_hello` (first frame parses as Hello with matching CARGO_PKG_VERSION), `ws_client_serial_in_is_logged_not_echoed` (SerialIn + Close round-trip without server panic), and `ws_upgrade_response_carries_coop_coep` (Pitfall #4 / T-02-18 regression — COOP same-origin + COEP require-corp survive on a raw GET to /ws). One clippy `unused_async` deviation auto-fixed inline (handle_wire kept async for Phase 4 forward compatibility). cargo test --workspace green. Commits 206844e + 8537e3b. WS-01 + WS-04 server side satisfied.
 - **Status:** Executing Phase 2
-- **Progress:** [█████████░] 93%
+- **Progress:** [██████████] 100% (Phase 2 plans 1-5 complete; plan 6 remaining)
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Carried from `PROJECT.md` Key Decisions:
 - [Phase 2]: 02-03: --no-open flag added to ServeArgs (default false = auto-open is on); open::that_detached called after listener bind, gated on !args.no_open. Detached spawn variant prevents misconfigured launchers from blocking the parent. Failure logs tracing::warn + emits UI-SPEC stderr line and keeps serving (never fatal). URL is format!("http://{bound}") so no user-controlled string reaches the launcher (T-02-04). All Phase 2 Cargo deps wired together: open=5.3.5, base64=0.22.1, futures-util=0.3.32, dev-only tokio-tungstenite=0.29.0; axum gains ws feature on bootroom crate (plan 02-02 needs zero Cargo.toml edits). SERV-06 subprocess test uses CARGO_BIN_EXE_bootroom + ChildGuard RAII + mpsc reader threads (mirrors WR-06). TDD RED 8e9e4fe -> GREEN c68672f; one clippy needless_continue auto-fix folded into GREEN.
 - [Phase 2]: 02-04: Used ES #drain private method syntax in funnel.js — enforces single-drain invariant via language syntax rather than convention
 - [Phase 2]: 02-05: Button hover uses inset box-shadow in --fg-muted; accent reserved for focus-visible ring only (no new hex values; palette purity preserved at count 10)
+- [Phase 2]: 02-02: /ws axum handler shipped — Pattern 1 (split socket + bounded mpsc capacity 32 per T-02-15) lives in crates/bootroom/src/ws.rs; route wired via axum::routing::any in build_router. Server is a pass-through observer in Phase 2 — sends Hello { version: env!(CARGO_PKG_VERSION) } as the first frame; SerialIn / SerialOut log to trace; Launch / Reset log to info; client-sent State/Hello log warn + continue (T-02-17). Malformed JSON / unexpected binary log + continue (T-02-16). handle_wire kept async with #[allow(clippy::unused_async)] + comment so Phase 4's tx.send().await reply path lands without signature churn. Integration tests in crates/bootroom/tests/ws_roundtrip.rs pin: (1) Hello version match, (2) SerialIn pass-through round-trip, (3) COOP/COEP-on-/ws regression (Pitfall #4 / T-02-18 — reqwest::get("/ws") returns 400 with both headers intact). Commits 206844e (feat) + 8537e3b (test). WS-01 + WS-04 server side both satisfied.
 
 ### Architecture (from research)
 
@@ -102,10 +103,10 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-18T10:22:53.511Z
-- **Stopped at:** Completed 02-05-PLAN.md (LAUNCH/RESET/CLEAR/COPY markup + IDLE pill CSS — palette-pure)
-- **Next session:** Execute Phase 2 remaining plans: 02-02 (`/ws` axum handler + integration tests incl. COOP/COEP regression) and 02-06 (WS lifecycle wiring — imports `funnel.js` from 02-04 and queries the DOM contract from 02-05).
-- **Context to reload:** `02-CONTEXT.md` (locked decisions), `02-UI-SPEC.md` (button/pill state machine for plan 06), `02-RESEARCH.md` (axum 0.8 WebSocket patterns for plan 02), `.planning/phases/02-websocket-live-serial/02-05-SUMMARY.md` (DOM contract this plan exposes), `crates/bootroom/web/index.html`, `crates/bootroom/web/style.css`, `crates/bootroom/web/funnel.js`, `crates/bootroom-core/src/lib.rs`.
+- **Last session:** 2026-05-18T10:28:20.558Z (then plan 02-02 completed 2026-05-18T10:26:40Z)
+- **Stopped at:** Completed 02-02-PLAN.md (/ws axum handler + 3 integration tests incl. COOP/COEP-on-/ws regression)
+- **Next session:** Execute Phase 2's final plan: 02-06 (WS lifecycle wiring in `web/app.js` — imports `funnel.js` from 02-04, queries the DOM contract from 02-05, connects to /ws shipped here, parses Hello + State frames, routes Launch/Reset clicks to WS frames before page reload).
+- **Context to reload:** `02-CONTEXT.md` (locked decisions), `02-UI-SPEC.md` (button/pill state machine for plan 06), `.planning/phases/02-websocket-live-serial/02-02-SUMMARY.md` (server-side /ws contract this plan consumes), `.planning/phases/02-websocket-live-serial/02-05-SUMMARY.md` (DOM contract), `crates/bootroom/web/index.html`, `crates/bootroom/web/app.js`, `crates/bootroom/web/funnel.js`, `crates/bootroom-core/src/lib.rs`.
 
 ---
 *State initialized: 2026-05-17 via gsd-roadmapper*
