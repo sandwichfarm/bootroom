@@ -10,6 +10,7 @@ pub mod kernel_info;
 pub mod kernel_stream;
 pub mod server;
 pub mod state;
+pub mod ws;
 
 // Re-export the surface tests will use.
 pub use cli::ServeArgs;
