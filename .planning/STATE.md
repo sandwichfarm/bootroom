@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-01-PLAN.md (WsMessage + GuestState protocol enums)
-last_updated: "2026-05-18T10:15:00.000Z"
+stopped_at: Completed 02-03-PLAN.md (--no-open flag + open::that_detached auto-open + Phase 2 Cargo deps)
+last_updated: "2026-05-18T10:09:26.541Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 10
-  percent: 67
+  completed_plans: 11
+  percent: 73
 ---
 
 # State: bootroom
@@ -28,12 +28,12 @@ progress:
 ## Current Position
 
 Phase: 2 (WebSocket + Live Serial) — EXECUTING
-Plan: 1 of 6 complete (next: 02-02 — /ws axum handler)
+Plan: 2 of 6 complete (01 done, 03 done; next plan in wave order: 02-02 — /ws axum handler)
 
 - **Phase:** 2 — WebSocket + Live Serial
-- **Plan:** 02-01 complete — `WsMessage` (serde-tagged enum) + `GuestState` (string-variant enum) defined in `bootroom-core`. Six round-trip tests pin the wire format `{"type":"<variant>",...}`. serde wired to `[dependencies]`, serde_json to `[dev-dependencies]`. TDD RED (a926c45) → GREEN (1d704d7). WS-04 satisfied; Phase 2 plan 02 unblocked (can `use bootroom_core::{WsMessage, GuestState};`); Phase 4 headless `run` will import the same enum unchanged.
+- **Plan:** 02-03 complete — `--no-open` flag on `ServeArgs`; `open::that_detached(url)` called after listener bind, gated on `!args.no_open`; failure logs `tracing::warn` + emits UI-SPEC stderr fallback line and keeps serving. All Phase 2 Cargo deps wired in one shot (`open=5`, `base64=0.22`, `futures-util=0.3.32`, dev-only `tokio-tungstenite=0.29`; axum gains `ws` feature on `bootroom`). SERV-06 subprocess test (`tests/serve_no_open.rs`) uses `CARGO_BIN_EXE_bootroom` + `ChildGuard` RAII + mpsc reader threads. TDD task 2: RED (8e9e4fe) → GREEN (c68672f); task 1 dep wiring (1cd583f). One clippy `needless_continue` auto-fix folded into GREEN.
 - **Status:** Executing Phase 2
-- **Progress:** [██░░░░░░░░] 17%
+- **Progress:** [███████░░░] 73%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Carried from `PROJECT.md` Key Decisions:
 - [Phase 1]: 01-06: Phase 1 UI shell (index.html / app.js / style.css) ships with inline non-module SAB probe BEFORE any module script (Pitfall #4 mitigated); xterm.js + xterm-pty wired per qemu-wasm reference with `attachCustomKeyEventHandler(() => false)` marking input as Phase-1 no-op; kernel bytes fetched up-front and written into Module.FS via synchronous preRun closure (the pendingKernel fallback — bypasses any qemu-wasm-build async-preRun dependency); status pill driven by Module.onRuntimeInitialized / onExit / onAbort; UI-SPEC palette declared once in :root, zero hex outside that block; /assets/qemu/load.js retained (180 lines of emscripten data-pack preload glue, required for /pack/ mount); FitAddon NOT vendored — resize handler is a placeholder, Phase 2 swaps it
 - [Phase 1]: 01-09: Spike A closed with verdict green / chosen_path module-fs-write. Production app.js (FS_unlink + FS_createDataFile in onRuntimeInitialized, commit 04a31fa from 01-07) is the proof; the substitution mechanism works on every page load against the real NORN kernel. qemu-wasm submodule SHA 0ef7b4e recorded in SPIKE-A-RESULT.md frontmatter per Pitfall 8. Phase 2 Launch button = fetch + FS_unlink + FS_createDataFile + location.reload (no Node dep). In-place reset (no full page reload) deferred as optional Phase 2 optimisation.
 - [Phase 2]: 02-01: `WsMessage` (serde-tagged enum, six variants: SerialIn/SerialOut/State/Launch/Reset/Hello) and `GuestState` (Idle/Loading/Running/Halted, derives Copy) defined in `bootroom-core/src/lib.rs`. `#[serde(tag = "type")]` produces `{"type":"<variant>",...}` wire shape; no `#[serde(deny_unknown_fields)]` so Phase 4 can extend additively (RESEARCH Open Q3). serde wired to `[dependencies]`, serde_json to `[dev-dependencies]` (runtime callers pass strings). Six round-trip tests pin the wire format. TDD RED (a926c45) → GREEN (1d704d7). One clippy `doc_markdown` deviation auto-fixed (quoted `SerialOut` in a doc comment). Plan 02 (axum /ws handler) and Phase 4 headless `run` both import this enum unchanged — WS-04 single source of truth established.
+- [Phase 2]: 02-03: --no-open flag added to ServeArgs (default false = auto-open is on); open::that_detached called after listener bind, gated on !args.no_open. Detached spawn variant prevents misconfigured launchers from blocking the parent. Failure logs tracing::warn + emits UI-SPEC stderr line and keeps serving (never fatal). URL is format!("http://{bound}") so no user-controlled string reaches the launcher (T-02-04). All Phase 2 Cargo deps wired together: open=5.3.5, base64=0.22.1, futures-util=0.3.32, dev-only tokio-tungstenite=0.29.0; axum gains ws feature on bootroom crate (plan 02-02 needs zero Cargo.toml edits). SERV-06 subprocess test uses CARGO_BIN_EXE_bootroom + ChildGuard RAII + mpsc reader threads (mirrors WR-06). TDD RED 8e9e4fe -> GREEN c68672f; one clippy needless_continue auto-fix folded into GREEN.
 
 ### Architecture (from research)
 
@@ -99,7 +100,7 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-18T10:15:00.000Z
+- **Last session:** 2026-05-18T10:08:04.596Z
 - **Stopped at:** Completed 02-01-PLAN.md (WsMessage + GuestState protocol enums)
 - **Next session:** Execute Phase 2 plan 02 (`/ws` axum handler + integration tests incl. COOP/COEP regression) — imports `bootroom_core::{WsMessage, GuestState}` from this plan.
 - **Context to reload:** `02-CONTEXT.md` (locked decisions), `02-RESEARCH.md` (axum 0.8 WebSocket patterns), `.planning/phases/02-websocket-live-serial/02-01-SUMMARY.md` (this plan), `crates/bootroom-core/src/lib.rs` (the enum the handler imports), `crates/bootroom/src/server.rs` (where the new `/ws` route lands).

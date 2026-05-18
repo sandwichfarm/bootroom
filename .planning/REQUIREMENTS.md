@@ -24,7 +24,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SERV-03**: Server embeds and serves the qemu-wasm artifacts (`.wasm`, `.data`, `.worker.js`) and the vanilla-JS UI from `include_dir!`.
 - [x] **SERV-04**: `--assets-dir <path>` runtime flag overrides the embedded assets for development of bootroom itself.
 - [x] **SERV-05**: `--port <N>` and `--host <addr>` flags override the bind defaults.
-- [ ] **SERV-06**: Server opens the user's default browser to the harness URL on start (suppressed by `--no-open`).
+- [x] **SERV-06**: Server opens the user's default browser to the harness URL on start (suppressed by `--no-open`).
 
 ### Browser Harness
 
@@ -156,7 +156,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SERV-03 | Phase 1 — Walking Skeleton | Pending (01-02 scaffolding ready; artifacts pending docker build) |
 | SERV-04 | Phase 1 — Walking Skeleton | Complete |
 | SERV-05 | Phase 1 — Walking Skeleton | Complete (01-04) |
-| SERV-06 | Phase 2 — WebSocket + Live Serial | Pending |
+| SERV-06 | Phase 2 — WebSocket + Live Serial | Complete |
 | UI-01 | Phase 1 — Walking Skeleton | Complete |
 | UI-02 | Phase 2 — WebSocket + Live Serial | Pending |
 | UI-03 | Phase 2 — WebSocket + Live Serial | Pending |
