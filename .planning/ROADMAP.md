@@ -60,7 +60,14 @@ Plans:
   3. The "Launch" button (re)boots the guest with the freshest kernel build; the "Reset" button restarts the guest with the currently-loaded kernel without reloading the page.
   4. A status pill reflects guest state (Idle / Loading / Running / Halted); console "clear" and "copy all" controls work.
   5. All host→guest writes funnel through a single sender (no byte-interleaving possible) with configurable ~10–20ms inter-character pacing on injected sequences; running `bootroom serve` opens the user's default browser unless `--no-open`.
-**Plans:** TBD
+**Plans:** 6 plans
+Plans:
+- [ ] 02-01-PLAN.md — bootroom-core WsMessage + GuestState enum (WS-04)
+- [ ] 02-02-PLAN.md — /ws axum handler + integration tests incl. COOP/COEP regression (WS-01, WS-04)
+- [ ] 02-03-PLAN.md — Cargo deps wiring + --no-open flag + auto-open (SERV-06)
+- [ ] 02-04-PLAN.md — web/funnel.js (Funnel + base64 + keyEventToBytes) (WS-02, WS-03)
+- [ ] 02-05-PLAN.md — index.html + style.css additions (buttons + IDLE pill) (UI-04, UI-06, UI-08, UI-09)
+- [ ] 02-06-PLAN.md — app.js refactor (WS lifecycle + funnel + buttons + state machine) (UI-02..09, WS-02, WS-03)
 **UI hint:** yes
 
 ### Phase 3: Config, Buttons, Watcher
