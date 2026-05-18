@@ -430,6 +430,14 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 // failure also write a diagnostic line to the terminal so the failure
 // leaves an audit trail (T-02-29 mitigation).
 const copyBtn = document.getElementById('btn-copy');
+// WR-06: cache the canonical button label OUTSIDE the click handler so
+// a rapid second click (or a click that catches the button mid-flash)
+// doesn't capture 'COPIED' or 'COPY FAILED' as its "original" label
+// and freeze the button on that transient text forever. Track the
+// pending revert timer so a new click cancels the old revert before
+// scheduling its own.
+const COPY_LABEL = copyBtn.textContent || 'COPY';
+let copyRevertTimer = null;
 copyBtn.addEventListener('click', async () => {
   // Per 02-RESEARCH.md Pitfall #5: endRow = xterm.buffer.active.length is
   // correct for xterm.js 5.3.0 (length is one-past-the-last index).
@@ -437,7 +445,6 @@ copyBtn.addEventListener('click', async () => {
   const selection = xterm.getSelection();
   const text = selection ||
     xterm.buffer.active.translateToString(true, 0, xterm.buffer.active.length);
-  const originalLabel = copyBtn.textContent;
   try {
     await navigator.clipboard.writeText(text);
     copyBtn.textContent = 'COPIED';
@@ -447,7 +454,11 @@ copyBtn.addEventListener('click', async () => {
       slave.write('[bootroom] Copy failed: ' + (e?.message || e) + '\r\n');
     } catch (_e) { /* slave may not be ready */ }
   }
-  setTimeout(() => { copyBtn.textContent = originalLabel; }, 1500);
+  if (copyRevertTimer !== null) clearTimeout(copyRevertTimer);
+  copyRevertTimer = setTimeout(() => {
+    copyBtn.textContent = COPY_LABEL;
+    copyRevertTimer = null;
+  }, 1500);
 });
 
 // ---------------------------------------------------------------------------
