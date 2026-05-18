@@ -1,6 +1,6 @@
 // crates/bootroom/web/app.js
 //
-// Phase 1 UI entrypoint. Loaded as `<script type="module">` from index.html.
+// Phase 2 UI entrypoint. Loaded as `<script type="module">` from index.html.
 //
 // Depends on these globals, populated by the classic scripts that index.html
 // loads BEFORE this module runs:
@@ -10,6 +10,16 @@
 //
 // Browsers defer `type="module"` scripts by default, so all four classic
 // <script> tags above this one have executed when this file starts.
+//
+// Phase 2 wires the interactive layer:
+//  - funnel-mounted xterm input (single writer to slave.write per WS-02)
+//  - WS /ws lifecycle (Hello / SerialIn / SerialOut / Launch / Reset / State)
+//  - SerialOut mirror: guest serial -> WS server (batched per readable burst)
+//  - Status pill state machine: IDLE -> LOADING -> RUNNING -> HALTED
+//    (with WS State{} frames overriding local lifecycle when present)
+//  - LAUNCH / RESET / CLEAR / COPY button handlers (UI-04, UI-08, UI-09).
+
+import { Funnel, bytesToB64, b64ToBytes, keyEventToBytes } from './funnel.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,14 +136,50 @@ if (typeof Terminal !== 'function' || typeof openpty !== 'function') {
   throw new Error('vendor globals missing (Terminal or openpty)');
 }
 
+// Defensive: assert IDLE at startup. plan-05 sets data-state="IDLE" in HTML
+// already; this call makes the JS state machine's initial transition
+// explicit and tolerates anyone re-rendering the markup later.
+setPill('IDLE');
+
 const xterm = new Terminal();
 xterm.open(document.getElementById('terminal'));
 
-// Phase 1: input deliberately no-op; Phase 2 wires through /ws
-xterm.attachCustomKeyEventHandler(() => false);
-
 const { master, slave } = openpty();
+// master addon owns the OUTPUT path (guest serial -> ldisc -> master.onWrite
+// -> xterm.write). Per 02-RESEARCH.md A8, we MUST keep the addon loaded so
+// guest output reaches the screen. The INPUT path (xterm.onData ->
+// master.ldisc.writeFromLower) is what we suppress below via the custom
+// key-event handler returning false.
 xterm.loadAddon(master);
+
+// The Funnel is the SOLE writer to slave.write during normal byte flow
+// (WS-02). Diagnostic [bootroom] strings written from error paths are
+// the documented out-of-band exception (see <documented_exceptions>
+// in 02-CONTEXT.md).
+const funnel = new Funnel(slave);
+
+// --- Pitfall #1 mitigation -------------------------------------------------
+//
+// xterm-pty's master addon, when loaded via xterm.loadAddon(master), wires
+// xterm.onData -> master.ldisc.writeFromLower internally. If we let xterm's
+// default key-event dispatch run, every keystroke would be DOUBLE-injected:
+// once via our funnel, and again via master's onData listener. The official
+// xterm-pty fix (02-RESEARCH.md Pitfall #1, lines 681-689) is to install
+// an attachCustomKeyEventHandler that:
+//   1) translates the KeyboardEvent to bytes ourselves
+//   2) enqueues them through the funnel with pacingMs: 0 (user typing)
+//   3) returns false to SUPPRESS xterm's default onData dispatch
+//
+// Returning false short-circuits xterm before onData fires, so master never
+// sees these bytes. The funnel is the sole input path.
+xterm.attachCustomKeyEventHandler((evt) => {
+  if (evt.type !== 'keydown') return true; // let keyup/keypress fall through
+  const bytes = keyEventToBytes(evt);
+  if (bytes && bytes.length > 0) {
+    funnel.enqueue(bytes, { pacingMs: 0 });
+  }
+  return false; // suppress xterm default -> master never sees these bytes
+});
 
 // window.Module was set by /assets/qemu/module.js (the QEMU argv).
 // Wire the PTY slave into qemu-wasm's chardev (xterm-pty was linked in
@@ -171,6 +217,201 @@ window.addEventListener('resize', fitTerminalToContainer);
 // bootGuest's onRuntimeInitialized also re-fits after the runtime starts.
 requestAnimationFrame(fitTerminalToContainer);
 
+// xterm has been mounted; transition the pill IDLE -> LOADING. RUNNING
+// will be set only once BOTH onRuntimeInitialized has fired AND the first
+// SerialOut byte has been observed (Pattern 5 from 02-RESEARCH.md).
+setPill('LOADING');
+
+// ---------------------------------------------------------------------------
+// Status pill state machine (Pattern 5 from 02-RESEARCH.md)
+// ---------------------------------------------------------------------------
+
+let runtimeInitialized = false;
+let firstSerialOutSeen = false;
+// When the WS server pushes a State{} frame, it wins over local lifecycle
+// (per CONTEXT.md "Browser auto-open + status pill source"). Set to null
+// when no server authority is in effect; uppercased string otherwise.
+let serverStateAuthority = null;
+
+function recomputePillLocal() {
+  if (serverStateAuthority !== null) {
+    setPill(serverStateAuthority);
+    return;
+  }
+  if (runtimeInitialized && firstSerialOutSeen) setPill('RUNNING');
+  else if (runtimeInitialized) setPill('LOADING');
+  // IDLE and HALTED are set explicitly by their triggers, not derived here.
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket /ws lifecycle
+// ---------------------------------------------------------------------------
+
+// Pacing config for WS-arriving SerialIn (WS-03). Default 15ms per
+// 02-CONTEXT.md. Override via ?pacing=N query param. Negative values
+// are clamped to 0 (no pacing).
+const urlParams = new URLSearchParams(location.search);
+const pacingMs = Math.max(0, Number(urlParams.get('pacing') ?? 15));
+
+// Module-scope so the SerialOut mirror (subscribed on slave.onReadable
+// below) can read it after this module finishes evaluating. Assigned
+// inside connectWs(); may be null between disconnect and reconnect.
+let ws = null;
+
+function connectWs() {
+  const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    console.warn('[bootroom] /ws constructor failed:', e);
+    setTimeout(connectWs, 1000);
+    return;
+  }
+  ws.onopen = () => { /* nothing — first frame is server Hello, handled below */ };
+  ws.onmessage = (ev) => {
+    let frame;
+    try { frame = JSON.parse(ev.data); }
+    catch (e) { console.warn('[bootroom] /ws: bad JSON:', e); return; }
+    handleWsFrame(frame);
+  };
+  ws.onclose = () => {
+    try { slave.write('[bootroom] /ws disconnected; reconnecting…\r\n'); } catch (_e) {}
+    setTimeout(connectWs, 1000); // naive retry per <deferred>; T-02-25 accept
+  };
+  ws.onerror = (e) => { console.warn('[bootroom] /ws error:', e); };
+}
+
+function handleWsFrame(frame) {
+  if (!frame || typeof frame.type !== 'string') return;
+  // T-02-24: each branch wraps its own work in try/catch so one bad frame
+  // cannot break onmessage.
+  switch (frame.type) {
+    case 'Hello':
+      // Validate version compatibility (log; do not block — UI-SPEC line 136).
+      // The bootroom binary's CARGO_PKG_VERSION is not exposed to the browser
+      // (no meta tag yet), so we report whatever the server advertises and
+      // accept it. Phase 6 may revisit a strict-mismatch warning.
+      try {
+        slave.write(
+          '[bootroom] /ws connected (server version ' +
+          (frame.version || 'unknown') + ')\r\n'
+        );
+      } catch (_e) { /* slave may not be ready */ }
+      break;
+    case 'SerialIn':
+      try {
+        const bytes = b64ToBytes(frame.data || '');
+        funnel.enqueue(bytes, { pacingMs });
+      } catch (e) {
+        console.warn('[bootroom] /ws SerialIn decode failed:', e);
+      }
+      break;
+    case 'State':
+      if (typeof frame.state === 'string') {
+        // GuestState serializes as PascalCase ("Idle"/"Loading"/"Running"/
+        // "Halted"); the pill uses UPPERCASE. Normalize here.
+        serverStateAuthority = frame.state.toUpperCase();
+        setPill(serverStateAuthority);
+      }
+      break;
+    default:
+      console.debug('[bootroom] /ws: unhandled frame type', frame.type);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SerialOut mirror: slave.onReadable -> WS SerialOut frame
+// ---------------------------------------------------------------------------
+//
+// slave.onReadable fires whenever the guest emits bytes on serial. The
+// callback drains slave.read() (which returns number[] per Pitfall #3)
+// and, if the WS is open, posts a base64-encoded SerialOut frame. This
+// is also the trigger for the LOADING -> RUNNING pill transition.
+
+slave.onReadable(() => {
+  const bytes = slave.read(); // number[] per 02-RESEARCH.md Pitfall #3
+  if (!bytes || bytes.length === 0) return;
+  if (!firstSerialOutSeen) {
+    firstSerialOutSeen = true;
+    recomputePillLocal(); // may transition LOADING -> RUNNING
+  }
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: 'SerialOut', data: bytesToB64(bytes) }));
+    } catch (e) {
+      console.warn('[bootroom] SerialOut send failed:', e);
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Button handlers (UI-04, UI-08, UI-09)
+// ---------------------------------------------------------------------------
+
+function disableHeaderButtons() {
+  const launch = document.getElementById('btn-launch');
+  const reset = document.getElementById('btn-reset');
+  if (launch) launch.disabled = true;
+  if (reset) reset.disabled = true;
+}
+
+// LAUNCH (UI-08): best-effort notify the server, then reload the page.
+// Reload is the canonical "re-instantiate qemu-wasm with fresh kernel"
+// gesture (Spike A verdict; 02-CONTEXT.md "Launch / Reset" decision).
+document.getElementById('btn-launch').addEventListener('click', () => {
+  disableHeaderButtons();
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'Launch' }));
+    }
+  } catch (e) { console.warn('[bootroom] Launch send failed:', e); }
+  // rAF gives the browser one frame to flush the WS send before the
+  // navigation tears down the document.
+  requestAnimationFrame(() => window.location.reload());
+});
+
+// RESET (UI-09): per 02-CONTEXT.md "Launch / Reset" decision, Phase 2
+// makes the two visually distinct but behaviorally identical.
+document.getElementById('btn-reset').addEventListener('click', () => {
+  disableHeaderButtons();
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'Reset' }));
+    }
+  } catch (e) { console.warn('[bootroom] Reset send failed:', e); }
+  requestAnimationFrame(() => window.location.reload());
+});
+
+// CLEAR (UI-04): wipe scrollback + viewport. No WS traffic.
+document.getElementById('btn-clear').addEventListener('click', () => {
+  xterm.clear();
+});
+
+// COPY (UI-04): copy current selection, or full active buffer if no
+// selection. Flash COPIED / COPY FAILED for 1500ms, then revert. On
+// failure also write a diagnostic line to the terminal so the failure
+// leaves an audit trail (T-02-29 mitigation).
+const copyBtn = document.getElementById('btn-copy');
+copyBtn.addEventListener('click', async () => {
+  // Per 02-RESEARCH.md Pitfall #5: endRow = xterm.buffer.active.length is
+  // correct for xterm.js 5.3.0 (length is one-past-the-last index).
+  // trimRight: true trims trailing whitespace per row (UX choice).
+  const selection = xterm.getSelection();
+  const text = selection ||
+    xterm.buffer.active.translateToString(true, 0, xterm.buffer.active.length);
+  const originalLabel = copyBtn.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    copyBtn.textContent = 'COPIED';
+  } catch (e) {
+    copyBtn.textContent = 'COPY FAILED';
+    try {
+      slave.write('[bootroom] Copy failed: ' + (e?.message || e) + '\r\n');
+    } catch (_e) { /* slave may not be ready */ }
+  }
+  setTimeout(() => { copyBtn.textContent = originalLabel; }, 1500);
+});
+
 // ---------------------------------------------------------------------------
 // Boot the guest
 // ---------------------------------------------------------------------------
@@ -204,6 +445,7 @@ async function bootGuest() {
   // Module.FS isn't exposed publicly on this emscripten build; we use the
   // wrapper functions Module exposes (FS_unlink, FS_createDataFile).
   Module.onRuntimeInitialized = () => {
+    runtimeInitialized = true;
     // WR-08: emscripten's FS errors expose .errno; 44 = ENOENT in the
     // musl errno table emscripten uses ("file not yet present", the
     // common case on first boot). Anything else (EROFS, EACCES, EBUSY,
@@ -231,13 +473,23 @@ async function bootGuest() {
       setPill('HALTED');
       return;
     }
-    if (self.crossOriginIsolated) setPill('RUNNING');
+    // Pattern 5: runtime ready, but pill stays LOADING until the first
+    // SerialOut byte arrives. recomputePillLocal handles both cases.
+    recomputePillLocal();
     // Re-fit once xterm has begun streaming serial — cell dimensions are
     // most accurate now that the renderer has flushed at least one frame.
     requestAnimationFrame(fitTerminalToContainer);
   };
-  Module.onExit = (_code) => setPill('HALTED');
-  Module.onAbort = (_what) => setPill('HALTED');
+  Module.onExit = (_code) => {
+    // Local lifecycle wins on terminal exit; clear any server authority
+    // so subsequent recomputes use local truth (Pattern 5 line 617).
+    serverStateAuthority = null;
+    setPill('HALTED');
+  };
+  Module.onAbort = (_what) => {
+    serverStateAuthority = null;
+    setPill('HALTED');
+  };
 
   // Dynamic import of the emscripten glue. Vendored at /assets/qemu/out.js.
   const mod = await import('/assets/qemu/out.js');
@@ -258,9 +510,11 @@ async function bootGuest() {
 }
 
 // ---------------------------------------------------------------------------
-// Kick off both flows
+// Kick off all flows
 // ---------------------------------------------------------------------------
 
+// Wire up WS first (cheap, non-blocking); then fetch info + boot guest.
+connectWs();
 loadKernelInfo();
 bootGuest().catch((e) => {
   console.error('boot failed:', e);
