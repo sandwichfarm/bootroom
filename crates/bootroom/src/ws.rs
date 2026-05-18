@@ -81,7 +81,22 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 match serde_json::from_str::<WsMessage>(text.as_str()) {
                     Ok(wire) => handle_wire(wire, &tx, &state).await,
                     Err(e) => {
-                        tracing::warn!(error = %e, payload = %text.as_str(), "bad WsMessage");
+                        // WR-02-01: truncate the payload before logging.
+                        // axum 0.8's default WS frame size is multi-MB; a
+                        // misbehaving client could amplify junk frames
+                        // into a self-inflicted log/journald DoS on the
+                        // loopback `--host 127.0.0.1` default (and worse
+                        // if the operator opens `--host 0.0.0.0`). The
+                        // event level stays at warn (operator-visible
+                        // signal); the payload sample is capped at 256
+                        // bytes which is plenty to disambiguate "client
+                        // sent malformed JSON" from "client used a
+                        // future protocol version".
+                        tracing::warn!(
+                            error = %e,
+                            payload = %truncate_for_log(text.as_str(), 256),
+                            "bad WsMessage"
+                        );
                     }
                 }
             }
@@ -104,6 +119,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     drop(tx);
     let _ = writer.await;
     tracing::info!("ws connection closed");
+}
+
+/// WR-02-01: cap an arbitrary client-supplied string before logging it.
+///
+/// Returns the original `s` when it fits within `max` bytes; otherwise
+/// returns a UTF-8-safe prefix followed by an ellipsis and a "(truncated,
+/// N bytes total)" tail. Truncation snaps backward to the nearest UTF-8
+/// scalar boundary so we never split a codepoint mid-byte (which would
+/// corrupt the log line for tools that parse it as JSON or UTF-8).
+fn truncate_for_log(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_owned();
+    }
+    let mut cut = max;
+    while cut > 0 && !s.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}…(truncated, {} bytes total)", &s[..cut], s.len())
 }
 
 // Async signature is kept forward-compatible: Phase 4's `Launch` / `Reset`
@@ -130,5 +163,43 @@ async fn handle_wire(wire: WsMessage, _tx: &mpsc::Sender<WsMessage>, _state: &Ap
             // keep the connection up instead of disconnecting.
             tracing::warn!("client sent server-owned message kind");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_for_log;
+
+    #[test]
+    fn truncate_for_log_passthrough_under_limit() {
+        assert_eq!(truncate_for_log("hello", 256), "hello");
+        assert_eq!(truncate_for_log("", 256), "");
+    }
+
+    #[test]
+    fn truncate_for_log_clips_oversize_ascii() {
+        let big = "a".repeat(1024);
+        let out = truncate_for_log(&big, 16);
+        assert!(out.starts_with(&"a".repeat(16)));
+        assert!(out.contains("truncated"));
+        assert!(out.contains("1024 bytes total"));
+    }
+
+    #[test]
+    fn truncate_for_log_respects_utf8_boundary() {
+        // "é" is two bytes (0xc3 0xa9). With max=1 we must not split the
+        // codepoint; the prefix length should fall back to 0.
+        let s = "é".repeat(64); // 128 bytes
+        let out = truncate_for_log(&s, 1);
+        // The "(truncated, N bytes total)" tail is appended after the
+        // safely-clipped prefix. The prefix must be valid UTF-8.
+        assert!(out.contains("truncated"));
+        assert!(out.contains("128 bytes total"));
+        // The prefix between "" and "…" should be either empty or one
+        // full "é" — never the lone 0xc3 byte. Verify the whole thing
+        // is still valid UTF-8 (trivially true since it's a `String`,
+        // but checking by re-encoding it via String::from_utf8 makes
+        // the intent explicit).
+        assert!(String::from_utf8(out.into_bytes()).is_ok());
     }
 }
