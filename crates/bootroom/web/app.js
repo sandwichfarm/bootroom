@@ -358,16 +358,30 @@ function handleWsFrame(frame) {
 }
 
 // ---------------------------------------------------------------------------
-// SerialOut mirror: slave.onReadable -> WS SerialOut frame
+// SerialOut mirror: master.onWrite -> WS SerialOut frame
 // ---------------------------------------------------------------------------
 //
-// slave.onReadable fires whenever the guest emits bytes on serial. The
-// callback drains slave.read() (which returns number[] per Pitfall #3)
-// and, if the WS is open, posts a base64-encoded SerialOut frame. This
-// is also the trigger for the LOADING -> RUNNING pill transition.
-
-slave.onReadable(() => {
-  const bytes = slave.read(); // number[] per 02-RESEARCH.md Pitfall #3
+// CRITICAL DIRECTION NOTE (fix for the Phase 2 input-path bug):
+//
+// In xterm-pty the byte flow is:
+//   HOST -> GUEST (input):  ldisc.writeFromLower -> slave.fromLdiscToUpperBuffer
+//                           -> slave.onReadable -> slave.read (drained by qemu)
+//   GUEST -> HOST (output): qemu's slave.write -> ldisc.writeFromUpper
+//                           -> master.fromLdiscToLowerBuffer -> master.onWrite
+//                           -> xterm.write (display)
+//
+// The SerialOut mirror must observe the GUEST->HOST direction, i.e. master.onWrite,
+// NOT slave.onReadable. Subscribing slave.onReadable + calling slave.read() drains
+// the HOST->GUEST input buffer before qemu's worker can re-read it, eating user
+// keystrokes (Phase-2 post-fix smoke discovery; see funnel.js doc comment for
+// the analogous CR-01 direction-swap bug).
+//
+// master.onWrite delivers [Uint8Array, ackCallback] to listeners. Multiple
+// listeners each get their own invocation; the ackCallback is plumbing for
+// xterm.write's backpressure ack chain — we MUST NOT call it (master.activate
+// already wires xterm's listener which calls ack when xterm finishes writing).
+// Our listener only observes.
+master.onWrite(([bytes, _ack]) => {
   if (!bytes || bytes.length === 0) return;
   if (!firstSerialOutSeen) {
     firstSerialOutSeen = true;
