@@ -152,11 +152,19 @@ const { master, slave } = openpty();
 // key-event handler returning false.
 xterm.loadAddon(master);
 
-// The Funnel is the SOLE writer to slave.write during normal byte flow
-// (WS-02). Diagnostic [bootroom] strings written from error paths are
-// the documented out-of-band exception (see <documented_exceptions>
-// in 02-CONTEXT.md).
-const funnel = new Funnel(slave);
+// The Funnel is the SOLE writer to the guest-input path (ldisc.writeFromLower)
+// during normal byte flow (WS-02). Diagnostic [bootroom] strings written
+// from error paths via slave.write are the documented out-of-band
+// exception (see <documented_exceptions> in 02-CONTEXT.md) — those go
+// to the DISPLAY path intentionally and remain unchanged.
+//
+// CR-01 (Phase 2 review): the funnel previously held only `slave` and
+// called slave.write, which xterm-pty routes to the display
+// (writeFromUpper -> OPOST -> _onWriteToLower), NOT to the guest. The
+// correct INPUT path is ldisc.writeFromLower; the ldisc is held on
+// the master addon as master.ldisc (verified against vendored
+// xterm-pty.js: `class S{ constructor(e,i){ this.ldisc = e; ... } }`).
+const funnel = new Funnel(slave, master.ldisc);
 
 // --- Pitfall #1 mitigation -------------------------------------------------
 //

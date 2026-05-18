@@ -502,7 +502,9 @@ mod tests {
 
 ### Pattern 3: Single-writer funnel without losing xterm rendering
 
-**What:** Keep `xterm.loadAddon(master)` so the OUTPUT path (guest serial → ldisc → master.onWrite → xterm.write) keeps working unchanged. Block the INPUT path that master sets up in its `activate` method by suppressing xterm's `onData` event entirely with `attachCustomKeyEventHandler(evt => { ...; return false; })`. Translate the keyboard event to bytes ourselves and push through the funnel — making the funnel the sole caller of `slave.write`.
+**What:** Keep `xterm.loadAddon(master)` so the OUTPUT path (guest serial → ldisc → master.onWrite → xterm.write) keeps working unchanged. Block the INPUT path that master sets up in its `activate` method by suppressing xterm's `onData` event entirely with `attachCustomKeyEventHandler(evt => { ...; return false; })`. Translate the keyboard event to bytes ourselves and push through the funnel — making the funnel the sole caller of `ldisc.writeFromLower` (the guest-stdin input path).
+
+**CORRECTION (Phase 2 CR-01):** An earlier draft of this pattern said the funnel should call `slave.write(bytes)`. That was wrong. Tracing the vendored `xterm-pty.js` proved that `slave.write` invokes `ldisc.writeFromUpper`, which is the **process-stdout direction** (display) — bytes flow through OPOST and end up rendered on screen, but never reach the guest's stdin. The correct INPUT path (terminal → guest) is `ldisc.writeFromLower(bytes)`, which feeds `inputFromLowerWithPreprocess` → `outputToUpper` → `flushToUpper` → `_onWriteToUpper` → `slave.fromLdiscToUpperBuffer` → `slave.read()` (which qemu-wasm's PTY shim drains). The funnel constructor therefore takes `(slave, ldisc)`; the drain loop calls `this.ldisc.writeFromLower([b])`. Display echo for user typing is preserved automatically by `inputFromLowerWithPreprocess` when termios `ECHO_P` is set (the default).
 
 **Why this matters (the trap):** Inspecting the vendored `xterm-pty.js` (master class `activate(e)`):
 ```javascript
@@ -511,9 +513,9 @@ this.disposables.push(e.onData(i), e.onBinary(i), e.onResize(...));
 ```
 That `e.onData(i)` is the auto-subscription. Without our intervention, every keystroke fires both:
 1. **xterm's default path:** keystroke → `xterm.onData(data)` → master forwards via `ldisc.writeFromLower(data)` → ends up in slave's upper buffer (the guest reads it)
-2. **Our funnel path:** keystroke → `funnel.enqueue(bytes)` → eventually `slave.write(bytes)` (which goes through ldisc → upper buffer)
+2. **Our funnel path:** keystroke → `funnel.enqueue(bytes)` → eventually `ldisc.writeFromLower(bytes)` → upper buffer (the guest reads it)
 
-Result: every byte is double-injected, breaking WS-02 by construction. The fix is keeping the Phase-1 mechanism (`attachCustomKeyEventHandler`) but using it to **simultaneously intercept the keystroke for our funnel AND suppress xterm's default `onData`** (by returning `false`).
+Result with both paths active: every byte is double-injected, breaking WS-02 by construction. The fix is keeping the Phase-1 mechanism (`attachCustomKeyEventHandler`) but using it to **simultaneously intercept the keystroke for our funnel AND suppress xterm's default `onData`** (by returning `false`). The funnel and master's auto-subscription target the same path (`writeFromLower`); the suppression ensures only the funnel actually fires.
 
 **When to use:** Always for the input path.
 
@@ -525,10 +527,12 @@ Result: every byte is double-injected, breaking WS-02 by construction. The fix i
 // xterm's default keystroke dispatch, which means xterm.onData does NOT
 // fire and master.activate's e.onData(i) listener never sees the keystroke.
 // We then have full ownership of the input path; the funnel is the only
-// writer to slave.write. See Pitfall #1 for the failure mode.
+// writer to ldisc.writeFromLower. See Pitfall #1 for the failure mode.
 
 import { Funnel, keyEventToBytes } from './funnel.js';
-const funnel = new Funnel(slave);
+const { master, slave } = openpty();
+xterm.loadAddon(master);
+const funnel = new Funnel(slave, master.ldisc); // CR-01: pass ldisc
 
 xterm.attachCustomKeyEventHandler((evt) => {
   if (evt.type !== 'keydown') return true; // let keyup/keypress fall through
@@ -684,9 +688,11 @@ Phase 2 introduces:
 
 **Why it happens:** xterm's `onData` is a fan-out emitter (all subscribers fire). There's no "this is the only handler" semantics. The trap is invisible until a kernel echoes back what it received and you notice `hheelllloo` in the terminal.
 
-**How to avoid:** Use `attachCustomKeyEventHandler` returning `false` to suppress xterm's default `onData` firing entirely, and translate the event to bytes inside that handler. Then the funnel is the sole writer. Code in Pattern 3.
+**How to avoid:** Use `attachCustomKeyEventHandler` returning `false` to suppress xterm's default `onData` firing entirely, and translate the event to bytes inside that handler. The funnel then calls `ldisc.writeFromLower([b])` itself (NOT `slave.write` — see Pattern 3's CR-01 correction; `slave.write` goes to the display, not the guest). Then the funnel is the sole writer to the input path. Code in Pattern 3.
 
 **Warning signs:** Doubled characters in the terminal. Shells parsing commands like `lls` instead of `ls`. Echo loop with the kernel's serial echo enabled.
+
+**Inverse failure (CR-01):** If the funnel targets `slave.write` instead of `ldisc.writeFromLower`, keystrokes appear visually in the terminal (the display path runs OPOST which renders them) but never reach the guest. Indistinguishable from a working REPL in casual smoke; only an interactive shell that runs commands surfaces it — the user types `ls`, sees `ls` echoed, presses Enter, sees a new prompt, and `ls` never ran. The funnel's CR-01 fix uses the input path; this pitfall is then closed.
 
 ### Pitfall 2: Concurrent WS writes from multiple tasks lose frames or panic on second mut borrow
 

@@ -1,14 +1,34 @@
 /**
- * funnel.js — single-writer funnel to xterm-pty's slave PTY.
+ * funnel.js — single-writer funnel to xterm-pty's guest stdin (ldisc input).
  *
- * THIS MODULE IS THE WS-02 MITIGATION. Every byte that reaches `slave.write`
- * MUST flow through one of the helpers in this file. Do not call
- * `slave.write` from anywhere else in the codebase. Plan 02-06 will install
+ * THIS MODULE IS THE WS-02 MITIGATION. Every host->guest byte MUST flow
+ * through one of the helpers in this file. Do not call
+ * `ldisc.writeFromLower(...)` (or any other guest-input path) from
+ * anywhere else in the codebase. The xterm Terminal is wired with
  * `attachCustomKeyEventHandler(evt => { funnel.enqueue(keyEventToBytes(evt));
- * return false; })` on the xterm Terminal so xterm's default `onData` path
- * is suppressed and the funnel is the only path to the slave. See
- * 02-RESEARCH.md Pitfall #1 (master addon double-subscription) for the
- * trap this avoids.
+ * return false; })` so xterm's default `onData` path is suppressed and the
+ * funnel is the only path to the guest. See 02-RESEARCH.md Pitfall #1
+ * (master addon double-subscription) for the trap this avoids.
+ *
+ * CR-01 (Phase 2 review): the funnel previously called `slave.write([b])`,
+ * which xterm-pty routes through `ldisc.writeFromUpper` -> OPOST ->
+ * `_onWriteToLower` -> the terminal DISPLAY. That is the
+ * process-stdout direction (guest -> terminal), not the input direction
+ * (terminal -> guest). User keystrokes appeared on screen but never
+ * reached qemu-wasm's PTY shim. The correct path for INPUT is
+ * `ldisc.writeFromLower([b])` -> `inputFromLowerWithPreprocess` ->
+ * `outputToUpper` -> `flushToUpper` -> `_onWriteToUpper` ->
+ * `slave.fromLdiscToUpperBuffer` -> `slave.read()` (which qemu-wasm's
+ * PTY shim drains). The funnel now plumbs `ldisc` through its
+ * constructor and calls `this.ldisc.writeFromLower([b])` in the drain
+ * loop. Display echo (when termios `ECHO_P` is set) is performed by
+ * `inputFromLowerWithPreprocess` as a side effect, so visual feedback
+ * for user typing is preserved unchanged.
+ *
+ * The `slave` reference is retained for any future helper that needs the
+ * display path (out-of-band diagnostic writes from app.js still use
+ * `slave.write` directly per <documented_exceptions> in 02-CONTEXT.md;
+ * those are correctly using the display path and must not change).
  *
  * Pacing semantics (WS-03): `pacingMs` is the delay BETWEEN bytes, not
  * before the first byte. A 5-byte enqueue with `pacingMs=20` takes 80ms
@@ -21,9 +41,10 @@
  *
  * Single-writer invariant (WS-02): a single `draining` flag serializes
  * the drain loop so concurrent enqueue calls cannot spawn a second pump.
- * Bytes are written in FIFO order via `this.slave.write([b])` one byte at
- * a time. See 02-RESEARCH.md Pitfall #7 for the drain pattern; Pitfall #8
- * (concurrent UI/scenario reorder) for why this funnel exists at all.
+ * Bytes are written in FIFO order via `this.ldisc.writeFromLower([b])`
+ * one byte at a time. See 02-RESEARCH.md Pitfall #7 for the drain
+ * pattern; Pitfall #8 (concurrent UI/scenario reorder) for why this
+ * funnel exists at all.
  *
  * Note: `queue` and `draining` are conventionally-public fields (JS has no
  * enforceable instance privacy for non-`#` fields). Do not mutate them
@@ -32,8 +53,18 @@
  */
 
 export class Funnel {
-  constructor(slave) {
+  /**
+   * @param {object} slave xterm-pty slave (retained for future helpers and
+   *   for symmetry with the documented out-of-band display path).
+   * @param {object} ldisc xterm-pty line discipline (held on the master
+   *   addon as `master.ldisc`). This is the INPUT path: bytes written
+   *   via `ldisc.writeFromLower(bytes)` flow into the slave's
+   *   upper-buffer and are drained by `slave.read()` (the qemu-wasm
+   *   PTY shim's input source).
+   */
+  constructor(slave, ldisc) {
     this.slave = slave;
+    this.ldisc = ldisc;
     /** Array of [byte:number, pacingMs:number] tuples. */
     this.queue = [];
     this.draining = false;
@@ -57,9 +88,23 @@ export class Funnel {
   async #drain() {
     while (this.queue.length > 0) {
       const [b, ms] = this.queue.shift();
-      // slave.write accepts number[] OR string (verified against vendored
-      // xterm-pty.js — see writeFromUpper in the P class).
-      this.slave.write([b]);
+      // INPUT path: bytes from the user (keystrokes) or WS-arriving
+      // SerialIn frames head to the guest's stdin via
+      // ldisc.writeFromLower -> _onWriteToUpper ->
+      // slave.fromLdiscToUpperBuffer -> slave.read (which qemu-wasm's
+      // PTY shim drains). Verified against vendored xterm-pty.js
+      // (writeFromLower in the d/ldisc class).
+      //
+      // WR-05: writeFromLower does not have the same flowActivated
+      // guard as writeFromUpper, so it cannot throw on XOFF. We still
+      // wrap defensively in case a future xterm-pty bump changes that;
+      // dropping a single byte is preferable to crashing the drain
+      // loop and silently breaking all subsequent input.
+      try {
+        this.ldisc.writeFromLower([b]);
+      } catch (e) {
+        console.warn('[funnel] writeFromLower threw; dropping byte', b, e);
+      }
       if (ms > 0) await new Promise(r => setTimeout(r, ms));
     }
   }
@@ -147,16 +192,22 @@ function enc(s) { return new TextEncoder().encode(s); }
  * `funnel` globally (plan 02-06 will wire it). Run each block; observe
  * the expected outcome.
  *
- * 1. Single-writer (WS-02): hook the slave to record writes, then:
+ * 1. Single-writer (WS-02) + guest-input path (CR-01): subscribe to
+ *    slave.onReadable, push known bytes through the funnel, drain
+ *    slave.read() and assert byte equality. This proves bytes reach
+ *    the guest-stdin upper buffer (qemu-wasm's PTY shim source),
+ *    not just the display:
  *      const seen = [];
- *      const realWrite = funnel.slave.write.bind(funnel.slave);
- *      funnel.slave.write = (b) => { seen.push(...b); realWrite(b); };
+ *      const disp = funnel.slave.onReadable(() => {
+ *        seen.push(...funnel.slave.read());
+ *      });
  *      funnel.enqueue([0x68, 0x69], {pacingMs: 0});
  *      funnel.enqueue([0x21], {pacingMs: 0});
- *      // Wait one tick, then:
  *      await new Promise(r => setTimeout(r, 10));
+ *      disp.dispose();
  *      console.assert(JSON.stringify(seen) === '[104,105,33]');
- *    Expected: bytes arrive in enqueue order; no interleaving.
+ *    Expected: bytes arrive in enqueue order; no interleaving; all
+ *    three bytes are read out of slave.read() (guest stdin).
  *
  * 2. Pacing (WS-03): with `?pacing=50` in URL (or override locally):
  *      const t0 = performance.now();
