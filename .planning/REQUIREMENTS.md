@@ -29,8 +29,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Browser Harness
 
 - [x] **UI-01**: Page boots `qemu-system-riscv64.wasm` using qemu-wasm's xterm-pty integration, with the supplied kernel loaded into the guest.
-- [ ] **UI-02**: Live serial console rendered via xterm.js, mounted on the xterm-pty `slave` (= guest `ttyS0`).
-- [ ] **UI-03**: Serial console supports free-form keyboard input written through to the guest.
+- [x] **UI-02**: Live serial console rendered via xterm.js, mounted on the xterm-pty `slave` (= guest `ttyS0`).
+- [x] **UI-03**: Serial console supports free-form keyboard input written through to the guest.
 - [x] **UI-04**: Console has "clear" and "copy all" controls.
 - [x] **UI-05**: Page displays a `crossOriginIsolated` probe banner with a fix hint when SAB is unavailable.
 - [x] **UI-06**: Status pill shows guest state (Idle / Loading / Running / Halted).
@@ -158,8 +158,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SERV-05 | Phase 1 — Walking Skeleton | Complete (01-04) |
 | SERV-06 | Phase 2 — WebSocket + Live Serial | Complete |
 | UI-01 | Phase 1 — Walking Skeleton | Complete |
-| UI-02 | Phase 2 — WebSocket + Live Serial | Pending |
-| UI-03 | Phase 2 — WebSocket + Live Serial | Pending |
+| UI-02 | Phase 2 — WebSocket + Live Serial | Complete |
+| UI-03 | Phase 2 — WebSocket + Live Serial | Complete |
 | UI-04 | Phase 2 — WebSocket + Live Serial | Complete |
 | UI-05 | Phase 1 — Walking Skeleton | Complete |
 | UI-06 | Phase 2 — WebSocket + Live Serial | Complete |

@@ -67,7 +67,7 @@ Plans:
 - [x] 02-03-PLAN.md — Cargo deps wiring + --no-open flag + auto-open (SERV-06)
 - [x] 02-04-PLAN.md — web/funnel.js (Funnel + base64 + keyEventToBytes) (WS-02, WS-03)
 - [x] 02-05-PLAN.md — index.html + style.css additions (buttons + IDLE pill) (UI-04, UI-06, UI-08, UI-09)
-- [ ] 02-06-PLAN.md — app.js refactor (WS lifecycle + funnel + buttons + state machine) (UI-02..09, WS-02, WS-03)
+- [x] 02-06-PLAN.md — app.js refactor (WS lifecycle + funnel + buttons + state machine) (UI-02..09, WS-02, WS-03)
 **UI hint:** yes
 
 ### Phase 3: Config, Buttons, Watcher
