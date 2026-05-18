@@ -19,7 +19,7 @@
 //    (with WS State{} frames overriding local lifecycle when present)
 //  - LAUNCH / RESET / CLEAR / COPY button handlers (UI-04, UI-08, UI-09).
 
-import { Funnel, bytesToB64, b64ToBytes, keyEventToBytes } from './funnel.js';
+import { Funnel, bytesToB64, b64ToBytes } from './funnel.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -145,49 +145,49 @@ const xterm = new Terminal();
 xterm.open(document.getElementById('terminal'));
 
 const { master, slave } = openpty();
-// master addon owns the OUTPUT path (guest serial -> ldisc -> master.onWrite
-// -> xterm.write). Per 02-RESEARCH.md A8, we MUST keep the addon loaded so
-// guest output reaches the screen. The INPUT path (xterm.onData ->
-// master.ldisc.writeFromLower) is what we suppress below via the custom
-// key-event handler returning false.
-xterm.loadAddon(master);
 
-// The Funnel is the SOLE writer to the guest-input path (ldisc.writeFromLower)
-// during normal byte flow (WS-02). Diagnostic [bootroom] strings written
-// from error paths via slave.write are the documented out-of-band
-// exception (see <documented_exceptions> in 02-CONTEXT.md) — those go
-// to the DISPLAY path intentionally and remain unchanged.
-//
-// CR-01 (Phase 2 review): the funnel previously held only `slave` and
-// called slave.write, which xterm-pty routes to the display
-// (writeFromUpper -> OPOST -> _onWriteToLower), NOT to the guest. The
-// correct INPUT path is ldisc.writeFromLower; the ldisc is held on
-// the master addon as master.ldisc (verified against vendored
-// xterm-pty.js: `class S{ constructor(e,i){ this.ldisc = e; ... } }`).
+// The Funnel is the SOLE writer to the guest-input path
+// (ldisc.writeFromLower) during normal byte flow (WS-02).
 const funnel = new Funnel(slave, master.ldisc);
 
-// --- Pitfall #1 mitigation -------------------------------------------------
+// --- Single-writer wiring (replaces xterm.loadAddon(master)) ----------------
 //
-// xterm-pty's master addon, when loaded via xterm.loadAddon(master), wires
-// xterm.onData -> master.ldisc.writeFromLower internally. If we let xterm's
-// default key-event dispatch run, every keystroke would be DOUBLE-injected:
-// once via our funnel, and again via master's onData listener. The official
-// xterm-pty fix (02-RESEARCH.md Pitfall #1, lines 681-689) is to install
-// an attachCustomKeyEventHandler that:
-//   1) translates the KeyboardEvent to bytes ourselves
-//   2) enqueues them through the funnel with pacingMs: 0 (user typing)
-//   3) returns false to SUPPRESS xterm's default onData dispatch
+// Background: xterm-pty's master.activate() (called by xterm.loadAddon)
+// auto-wires both directions, including `xterm.onData → ldisc.writeFromLower`.
+// If we ALSO funnel keystrokes via attachCustomKeyEventHandler, every printable
+// character lands twice (post-CR-01 smoke caught this: "ls" appeared as "llss").
+// attachCustomKeyEventHandler only intercepts `keydown` and cannot cancel the
+// `keypress`/`input` path that xterm derives its data emission from, so even
+// returning `false` from a keydown handler does not suppress master's onData
+// listener. The two write paths therefore both fire on every keystroke.
 //
-// Returning false short-circuits xterm before onData fires, so master never
-// sees these bytes. The funnel is the sole input path.
-xterm.attachCustomKeyEventHandler((evt) => {
-  if (evt.type !== 'keydown') return true; // let keyup/keypress fall through
-  const bytes = keyEventToBytes(evt);
-  if (bytes && bytes.length > 0) {
-    funnel.enqueue(bytes, { pacingMs: 0 });
-  }
-  return false; // suppress xterm default -> master never sees these bytes
+// Fix: skip loadAddon entirely. Wire each direction explicitly so the funnel
+// is genuinely the only producer of guest-input bytes.
+//
+// OUTPUT path (guest → display): master.onWrite emits [Uint8Array, ackCallback]
+// every time ldisc has bytes from writeFromUpper. xterm.write consumes the ack
+// to drive backpressure — we plumb it straight through. A second observer
+// (the SerialOut WS mirror further below) subscribes to the same event without
+// touching the ack.
+master.onWrite(([bytes, ack]) => xterm.write(bytes, ack));
+
+// INPUT path (xterm → guest): the funnel is the single writer. xterm.onData
+// hands us a UTF-8 string per key event (covers printable chars, paste, Enter,
+// arrow keys, Ctrl-letter, etc. — xterm's own keymapping); we encode to bytes
+// and enqueue. Setting `pacingMs: 0` gives native-speed typing.
+xterm.onData((data) => {
+  const bytes = new TextEncoder().encode(data);
+  if (bytes.length > 0) funnel.enqueue(bytes, { pacingMs: 0 });
 });
+
+// Paste of binary data follows the same path.
+xterm.onBinary((data) => {
+  const bytes = new TextEncoder().encode(data);
+  if (bytes.length > 0) funnel.enqueue(bytes, { pacingMs: 0 });
+});
+
+// Forward TIOCGWINSZ-relevant resize events so the guest's termios can react.
+xterm.onResize(({ cols, rows }) => master.notifyResize(rows, cols));
 
 // window.Module was set by /assets/qemu/module.js (the QEMU argv).
 // Wire the PTY slave into qemu-wasm's chardev (xterm-pty was linked in
