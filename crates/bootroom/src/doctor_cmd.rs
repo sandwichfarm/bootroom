@@ -81,7 +81,7 @@ pub async fn run(args: DoctorArgs) -> ExitCode {
     let checks = vec![
         check_version(),
         check_qemu_rev(),
-        check_browser(),
+        check_browser().await,
         check_headers().await,
         check_config(args.config.as_deref()),
         check_cli_surface(),
@@ -156,16 +156,23 @@ fn check_qemu_rev() -> Check {
 /// A missing browser is INFORMATIONAL (status=Info), never a failure —
 /// `bootroom serve` does not need chromium, and CI runners that only
 /// exercise the server (or run their own driver) are still healthy.
-fn check_browser() -> Check {
+///
+/// WR-01: this function is `async` and uses `tokio::process::Command` so
+/// the `--version` probe does not block a tokio worker. A hung or
+/// slow-to-start chromium would otherwise freeze the executor for the
+/// duration of the probe (Doctor advertises a ~100 ms target, and the
+/// in-process router self-check that follows shares the same executor).
+async fn check_browser() -> Check {
     match crate::run_cmd::discover_chromium() {
         Ok(path) => {
             // Probe `--version` to confirm the binary is a real browser
             // and capture the human-friendly version string. A failed
             // probe downgrades to Info (NOT Fail) — the binary exists
             // but is uncooperative; not a CI gating concern.
-            let probe = std::process::Command::new(&path)
+            let probe = tokio::process::Command::new(&path)
                 .arg("--version")
-                .output();
+                .output()
+                .await;
             match probe {
                 Ok(out) if out.status.success() => {
                     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -215,8 +222,12 @@ pub async fn check_headers() -> Check {
 
     // `new_for_test` tolerates a non-existent kernel path (state.rs:157).
     // We pass a placeholder under temp_dir so we never accidentally
-    // canonicalize-touch some real artifact.
-    let kernel = std::env::temp_dir().join("bootroom-doctor-noop");
+    // canonicalize-touch some real artifact. WR-03: scope the placeholder
+    // path with the current pid so parallel test runners (and any other
+    // concurrent doctor invocation on a shared host) get distinct names
+    // and do not race on a fixed filename.
+    let kernel = std::env::temp_dir()
+        .join(format!("bootroom-doctor-noop-{}", std::process::id()));
     let state = Arc::new(crate::AppState::new_for_test(kernel, None));
     let app = crate::build_router(state);
     let resp = match app
@@ -294,10 +305,21 @@ fn check_config(config: Option<&Path>) -> Check {
             };
         }
         Err(e) => {
+            // WR-02: distinguish common io::ErrorKind variants so the
+            // operator-facing detail string points at the actual root
+            // cause rather than collapsing every non-NotFound failure
+            // into one generic Fail. PermissionDenied and "this is a
+            // directory" are the most common usage-error shapes; the
+            // catch-all preserves the raw error rendering.
+            let kind_hint = match e.kind() {
+                std::io::ErrorKind::PermissionDenied => " (permission denied)",
+                std::io::ErrorKind::IsADirectory => " (is a directory, not a file)",
+                _ => "",
+            };
             return Check {
                 name: "config".to_string(),
                 status: CheckStatus::Fail,
-                detail: format!("{}: {e}", path_buf.display()),
+                detail: format!("{}: {e}{kind_hint}", path_buf.display()),
             };
         }
     };
@@ -672,11 +694,12 @@ mod tests {
 
     #[test]
     fn check_config_missing_is_info_not_fail() {
-        // A path that cannot exist (NUL char would be invalid on Unix —
-        // use a clearly-bogus non-existent location instead).
-        let missing = std::env::temp_dir()
-            .join("bootroom-doctor-test-no-such-file-xyz-9f8e7d6c.toml");
-        let _ = std::fs::remove_file(&missing); // belt-and-suspenders
+        // WR-03: use tempfile::tempdir() so the missing-file path is
+        // process-isolated. We name a file inside a fresh tempdir that
+        // we never create, giving us a guaranteed-non-existent path with
+        // no cross-test or cross-runner contention.
+        let dir = tempfile::tempdir().expect("mkdir tmp");
+        let missing = dir.path().join("no-such-file.toml");
         let c = check_config(Some(&missing));
         assert_eq!(c.name, "config");
         assert!(
@@ -710,9 +733,11 @@ mod tests {
 
     #[test]
     fn check_config_broken_toml_is_fail() {
-        let dir = std::env::temp_dir().join("bootroom-doctor-broken-toml");
-        std::fs::create_dir_all(&dir).expect("mkdir tmp");
-        let p = dir.join("bad.toml");
+        // WR-03: tempfile::tempdir() is process-isolated and auto-cleans
+        // on drop, eliminating the cross-test / cross-user contention
+        // risks of a hard-coded /tmp/bootroom-doctor-* path.
+        let dir = tempfile::tempdir().expect("mkdir tmp");
+        let p = dir.path().join("bad.toml");
         std::fs::write(&p, "this is not valid toml [[[\n").expect("write bad toml");
         let c = check_config(Some(&p));
         assert_eq!(c.name, "config");
@@ -722,14 +747,13 @@ mod tests {
             c.status,
             c.detail
         );
-        let _ = std::fs::remove_file(&p);
     }
 
     #[test]
     fn check_config_valid_toml_is_pass() {
-        let dir = std::env::temp_dir().join("bootroom-doctor-valid-toml");
-        std::fs::create_dir_all(&dir).expect("mkdir tmp");
-        let p = dir.join("good.toml");
+        // WR-03: tempfile::tempdir() — see check_config_broken_toml_is_fail.
+        let dir = tempfile::tempdir().expect("mkdir tmp");
+        let p = dir.path().join("good.toml");
         std::fs::write(&p, "schema_version = 1\n").expect("write good toml");
         let c = check_config(Some(&p));
         assert_eq!(c.name, "config");
@@ -741,7 +765,6 @@ mod tests {
         );
         assert!(c.detail.contains("0 actions"));
         assert!(c.detail.contains("0 scenarios"));
-        let _ = std::fs::remove_file(&p);
     }
 
     // ----- check_version + check_cli_surface: shape pins -----
