@@ -39,4 +39,9 @@ hex = "0.4"
 bootroom-core = { path = "crates/bootroom-core" }
 
 [profile.release]
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 # Defaults; Phase 6 may tune LTO.
