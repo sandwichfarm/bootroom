@@ -378,6 +378,14 @@ export async function runScenario(scenario, actions, deps) {
   // are constant-size per action; they don't need to be metered.
   let transcriptBytes = 0;
   let transcriptOverflowed = false;
+  // WR-01 fix: track the cumulative count of serial_chunk bytes_b64
+  // bytes that were DROPPED after the cap fired (i.e. actually
+  // truncated). The transcript_overflow event's
+  // `bytes_truncated_estimate` is updated at scenario end so the
+  // emitted value matches the field name.
+  let transcriptBytesTruncated = 0;
+  /** @type {object|null} reference to the single transcript_overflow event */
+  let overflowEvent = null;
 
   // Per-action buffer (Pattern 2 + RUN-07). RESET on action start; one
   // entry per action in scenario.actions.
@@ -414,20 +422,29 @@ export async function runScenario(scenario, actions, deps) {
     // cross-action line ordering for `after = "any"`).
     flat.push(new Uint8Array(bytes));
     // Transcript serial_chunk — append until the cumulative cap.
+    const b64 = bytesToB64(bytes);
     if (transcriptOverflowed) {
       // Cap already reached on a prior chunk; drop further serial_chunk
       // events but keep running. Buffers above continue to grow so
-      // assertion verdicts remain correct.
+      // assertion verdicts remain correct. Account for the dropped
+      // bytes so the overflow event can report an honest truncated
+      // count at scenario end (WR-01).
+      transcriptBytesTruncated += b64.length;
       return;
     }
-    const b64 = bytesToB64(bytes);
     if (transcriptBytes + b64.length > TRANSCRIPT_CAP_BYTES) {
       transcriptOverflowed = true;
-      transcript.push({
+      // The bytes_truncated_estimate is patched at scenario end with
+      // the actual dropped-byte total (the entire current chunk plus
+      // every subsequent chunk). Start the running count by counting
+      // THIS chunk — it is the first dropped chunk.
+      transcriptBytesTruncated += b64.length;
+      overflowEvent = {
         ts: nowIsoUtc(),
         type: 'transcript_overflow',
-        bytes_truncated_estimate: transcriptBytes,
-      });
+        bytes_truncated_estimate: 0, // patched at scenario end
+      };
+      transcript.push(overflowEvent);
       return;
     }
     transcriptBytes += b64.length;
@@ -610,6 +627,14 @@ export async function runScenario(scenario, actions, deps) {
   }
 
   const endedAt = nowIsoUtc();
+  // WR-01: patch the single transcript_overflow event (if any) with the
+  // actual count of dropped serial_chunk bytes_b64 bytes, so the
+  // emitted `bytes_truncated_estimate` matches the field name. The
+  // previous implementation pinned this to `transcriptBytes` — the
+  // bytes ACCEPTED before the cap, which is the opposite quantity.
+  if (overflowEvent) {
+    overflowEvent.bytes_truncated_estimate = transcriptBytesTruncated;
+  }
   // Append a terminal scenario_result event so the JSONL transcript
   // is self-describing without needing the WS frame's outer fields.
   transcript.push({
@@ -738,9 +763,11 @@ export async function runScenario(scenario, actions, deps) {
  *      - Count `serial_chunk` events: MUST be < 6_000 (capped before
  *        the full 6 MB has been logged).
  *      - Count `transcript_overflow` events: MUST be exactly 1.
- *      - The `transcript_overflow.bytes_truncated_estimate` is
- *        approximately TRANSCRIPT_CAP_BYTES (5_000_000) with a
- *        tolerance of one chunk's base64 size (~1366 bytes).
+ *      - The `transcript_overflow.bytes_truncated_estimate` is the
+ *        COUNT OF DROPPED serial_chunk bytes_b64 bytes after the cap
+ *        fired (WR-01). With 6_000 * 1 KB raw chunks → ~8.2 MB total
+ *        base64 → ~3.2 MB truncated (8.2 MB total minus ~5 MB
+ *        accepted, with a chunk-sized tolerance).
  *
  *      Snippet to evaluate in DevTools:
  *        const t = sent[0].transcript;
@@ -750,8 +777,10 @@ export async function runScenario(scenario, actions, deps) {
  *                      estimate: overflows[0]?.bytes_truncated_estimate });
  *        console.assert(chunks < 6_000, 'serial_chunk count not capped');
  *        console.assert(overflows.length === 1, 'transcript_overflow not unique');
- *        console.assert(Math.abs(overflows[0].bytes_truncated_estimate - 5_000_000) < 2_000,
- *                       'bytes_truncated_estimate too far from cap');
+ *        // After WR-01: bytes_truncated_estimate ≈ total_b64 - accepted ≈ 3.2 MB.
+ *        console.assert(overflows[0].bytes_truncated_estimate > 2_000_000 &&
+ *                       overflows[0].bytes_truncated_estimate < 4_000_000,
+ *                       'bytes_truncated_estimate outside expected dropped-byte range');
  *
  * 4. Type "approved" if the cap fires as documented; else describe
  *    what diverged.
