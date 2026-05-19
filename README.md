@@ -9,7 +9,7 @@ click-to-trigger scenario library.
 > binary, and crates are all named `bootroom`. The directory may be
 > renamed at the user's convenience.
 
-## Quickstart (Phase 1 — Walking Skeleton)
+## Quickstart
 
     cargo build --release
     ./target/release/bootroom serve --kernel /path/to/Image
