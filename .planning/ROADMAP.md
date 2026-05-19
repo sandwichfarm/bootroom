@@ -151,7 +151,17 @@ Plans:
   2. `bootroom` is published to crates.io; `cargo install bootroom` from a clean container produces a working binary that boots a fixture kernel from `/tmp/empty` (release-CI smoke test gates publication).
   3. Prebuilt release binaries via `cargo-dist` cover `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, and `aarch64-apple-darwin`; `Cargo.toml` `package.include` explicitly lists `web/` and the bundled qemu-wasm artifacts so they cannot be silently dropped by `cargo publish`.
   4. `cargo binstall bootroom` discovers and installs the prebuilt release artifacts automatically (no extra metadata work — drops out of `cargo-dist` + `[package.repository]`).
-**Plans:** TBD
+**Plans:** 8 plans
+Plans:
+- [ ] 06-PLAN.md — Plan-set overview, dependency graph, wave structure, source-audit
+- [ ] 06-01-PLAN.md — License files + SPDX manifests + README license badge (DIST-07)
+- [ ] 06-02-PLAN.md — Cargo.toml [package].include allow-lists + publish metadata (DIST-05)
+- [ ] 06-03-PLAN.md — cargo-dist init: 4 targets, shell+homebrew installers, release.yml generated (DIST-03, DIST-04, DIST-06)
+- [ ] 06-04-PLAN.md — make install / make release Makefile targets (DIST-02)
+- [ ] 06-05-PLAN.md — deny.toml + ci-deny.yml workflow enforcing MIT OR Apache-2.0 dep tree (DIST-07)
+- [ ] 06-06-PLAN.md — release-smoke.yml: Docker cargo install + bootroom doctor gates publish (DIST-03, DIST-05)
+- [ ] 06-07-PLAN.md — README install matrix + quickstart + NORN consumer link (DIST-02, DIST-03, DIST-04, DIST-06)
+- [ ] 06-08-PLAN.md — Path-independence test (DIST-05)
 
 ## Phase Ordering Rationale
 
