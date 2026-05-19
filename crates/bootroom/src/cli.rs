@@ -1,8 +1,18 @@
 //! Command-line argument parsing.
 //!
-//! Phase 1 ships a single `serve` subcommand. Phase 2 will add `run`;
-//! Phase 3 adds `init`/`check`; Phase 5 adds `doctor`.
+//! Phase 1 shipped a single `serve` subcommand. Phase 3 (this revision) adds
+//! `check` and `init` so callers can match on `Cmd::{Serve, Check, Init}`
+//! exhaustively. The `check`/`init` handlers themselves are stubs in
+//! `main.rs` until Plan 04 wires the real bodies.
+//!
+//! Phase 3 also extends `ServeArgs` with `--config <PATH>` (TOML config
+//! location override) and `--action <LABEL=BYTES>` (repeatable ad-hoc
+//! action definitions). `--action` decodes via the shared
+//! `bootroom_core::decode_bytes_escape` helper so the CLI grammar and the
+//! TOML grammar can never drift.
 
+use bootroom_core::config::CliAction;
+use bootroom_core::decode_bytes_escape;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -17,7 +27,16 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Cmd {
     /// Start the local HTTP server and serve the qemu-wasm UI.
+    ///
+    /// MUST be the first variant — preserves help-text ordering and the
+    /// Phase-2 subprocess test invocation shape (Pitfall #9 mitigation).
     Serve(ServeArgs),
+
+    /// Parse and validate bootroom.toml without starting the server.
+    Check(CheckArgs),
+
+    /// Write a starter bootroom.toml to the current directory.
+    Init(InitArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -49,4 +68,201 @@ pub struct ServeArgs {
     /// supervisor that opens the browser itself.
     #[arg(long)]
     pub no_open: bool,
+
+    /// Path to bootroom.toml; default = ./bootroom.toml.
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+
+    /// Define an ad-hoc action without editing config. Format: 'label=BYTES'
+    /// with C-style escapes (\r \n \t \0 \\ \xNN). Repeatable. Overrides
+    /// config-file actions on label collision; last --action wins among
+    /// repeated CLI values.
+    #[arg(
+        long = "action",
+        value_name = "LABEL=BYTES",
+        action = clap::ArgAction::Append,
+        value_parser = parse_cli_action,
+    )]
+    pub actions: Vec<CliAction>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CheckArgs {
+    /// Path to bootroom.toml; default = ./bootroom.toml.
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct InitArgs {
+    /// Overwrite an existing bootroom.toml.
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// Clap value-parser for `--action LABEL=BYTES`.
+///
+/// Splits on the FIRST `=` so operators may embed `=` in the byte payload
+/// (e.g. `--action 'env=KEY=VALUE\r'`). Rejects an empty label. Decodes the
+/// rhs via the shared `decode_bytes_escape` helper so the CLI escape
+/// grammar is byte-for-byte identical to the TOML one — no second decoder
+/// to drift.
+///
+/// Returns `Result<_, String>` (never panics) so clap renders the error as
+/// the usage error and exits 2 (clap's standard exit code for argv errors).
+fn parse_cli_action(s: &str) -> Result<CliAction, String> {
+    let eq_idx = s
+        .find('=')
+        .ok_or_else(|| format!("--action {s:?}: expected 'label=BYTES'"))?;
+    let (label, rest) = s.split_at(eq_idx);
+    // `rest` starts with the `=` — strip it.
+    let raw_bytes = &rest[1..];
+    if label.is_empty() {
+        return Err(format!("--action {s:?}: empty label"));
+    }
+    let bytes = decode_bytes_escape(raw_bytes)
+        .map_err(|e| format!("--action {label}: {e}"))?;
+    Ok(CliAction {
+        label: label.to_owned(),
+        bytes,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_cli_action_simple() {
+        let got = parse_cli_action("reboot=reboot\\r").expect("parses");
+        assert_eq!(got.label, "reboot");
+        assert_eq!(got.bytes, vec![b'r', b'e', b'b', b'o', b'o', b't', 0x0d]);
+    }
+
+    #[test]
+    fn parse_cli_action_hex() {
+        let got = parse_cli_action("ctrlc=\\x03").expect("parses");
+        assert_eq!(got.label, "ctrlc");
+        assert_eq!(got.bytes, vec![0x03]);
+    }
+
+    #[test]
+    fn parse_cli_action_empty_label_rejected() {
+        let err = parse_cli_action("=foo").expect_err("empty label rejected");
+        assert!(
+            err.contains("empty label"),
+            "expected 'empty label' in error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_cli_action_no_equals_rejected() {
+        let err = parse_cli_action("reboot").expect_err("no '=' rejected");
+        assert!(
+            err.contains("expected 'label=BYTES'"),
+            "expected helpful format hint, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_cli_action_invalid_escape_propagates() {
+        let err = parse_cli_action("x=\\q").expect_err("invalid escape rejected");
+        // EscapeError::Display says "unknown escape"; we also prefix with
+        // the label so the operator knows which --action failed.
+        assert!(
+            err.contains("unknown escape") || err.contains("x"),
+            "expected unknown-escape error or label 'x' in error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn cli_parses_serve_with_repeated_actions() {
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "serve",
+            "--kernel",
+            "/tmp/x",
+            "--no-open",
+            "--action",
+            "reboot=reboot\\r",
+            "--action",
+            "ctrlc=\\x03",
+        ])
+        .expect("parses");
+        assert!(matches!(cli.cmd, Cmd::Serve(_)));
+        let Cmd::Serve(args) = cli.cmd else {
+            unreachable!("matched above")
+        };
+        assert_eq!(args.actions.len(), 2);
+        assert_eq!(args.actions[0].label, "reboot");
+        assert_eq!(
+            args.actions[0].bytes,
+            vec![b'r', b'e', b'b', b'o', b'o', b't', 0x0d]
+        );
+        assert_eq!(args.actions[1].label, "ctrlc");
+        assert_eq!(args.actions[1].bytes, vec![0x03]);
+    }
+
+    #[test]
+    fn cli_parses_check_with_config() {
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "check",
+            "--config",
+            "/tmp/bootroom.toml",
+        ])
+        .expect("parses");
+        let Cmd::Check(args) = cli.cmd else {
+            panic!("expected Cmd::Check, got {:?}", cli.cmd);
+        };
+        assert_eq!(args.config.as_deref(), Some(std::path::Path::new("/tmp/bootroom.toml")));
+    }
+
+    #[test]
+    fn cli_parses_init_force() {
+        let cli = Cli::try_parse_from(["bootroom", "init", "--force"]).expect("parses");
+        let Cmd::Init(args) = cli.cmd else {
+            panic!("expected Cmd::Init, got {:?}", cli.cmd);
+        };
+        assert!(args.force);
+    }
+
+    #[test]
+    fn cli_parses_init_default() {
+        let cli = Cli::try_parse_from(["bootroom", "init"]).expect("parses");
+        let Cmd::Init(args) = cli.cmd else {
+            panic!("expected Cmd::Init, got {:?}", cli.cmd);
+        };
+        assert!(!args.force);
+    }
+
+    #[test]
+    fn cli_serve_args_phase2_compat() {
+        // Pitfall #9 regression pin: the five Phase-2 ServeArgs fields keep
+        // their flag names, types, and defaults; the new --config /
+        // --action flags default to None / empty so existing Phase-2
+        // invocations parse unchanged.
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "serve",
+            "--kernel",
+            "/tmp/x",
+            "--host",
+            "::1",
+            "--port",
+            "9999",
+            "--no-open",
+        ])
+        .expect("parses");
+        let Cmd::Serve(args) = cli.cmd else {
+            panic!("expected Cmd::Serve, got {:?}", cli.cmd);
+        };
+        assert_eq!(args.kernel, std::path::PathBuf::from("/tmp/x"));
+        assert_eq!(args.host, "::1");
+        assert_eq!(args.port, 9999);
+        assert!(args.no_open);
+        assert!(args.assets_dir.is_none());
+        assert!(args.config.is_none());
+        assert!(args.actions.is_empty());
+    }
 }
