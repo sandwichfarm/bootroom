@@ -158,9 +158,9 @@ All 59 v1 requirements mapped to exactly one phase. See REQUIREMENTS.md Traceabi
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Walking Skeleton | 4/9 | In progress | — |
-| 2. WebSocket + Live Serial | 3/6 | In progress | — |
-| 3. Config, Buttons, Watcher | 0/? | Not started | — |
+| 1. Walking Skeleton | 9/9 | Complete | 2026-05-17 |
+| 2. WebSocket + Live Serial | 6/6 | Complete | 2026-05-18 |
+| 3. Config, Buttons, Watcher | 11/11 | Complete | 2026-05-19 |
 | 4. Scenario Engine + Headless | 0/? | Not started | — |
 | 5. Diagnostics & Doctor | 0/? | Not started | — |
 | 6. Distribution | 0/? | Not started | — |
