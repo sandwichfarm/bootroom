@@ -67,6 +67,21 @@ fn serve_no_open_returns_listener_without_launching_browser() {
         .expect("kernel tempfile path utf-8")
         .to_owned();
 
+    // Phase 3: `bootroom serve` now requires a readable `bootroom.toml`
+    // at startup (or `--config <PATH>`). Supply a trivial valid config
+    // so this test exercises only the --no-open codepath.
+    let mut cfg = tempfile::NamedTempFile::new().expect("config tempfile");
+    {
+        use std::io::Write;
+        cfg.write_all(b"schema_version = 1\n")
+            .expect("write config");
+    }
+    let cfg_path = cfg
+        .path()
+        .to_str()
+        .expect("config tempfile path utf-8")
+        .to_owned();
+
     let mut child = Command::new(bin)
         .args([
             "serve",
@@ -77,6 +92,8 @@ fn serve_no_open_returns_listener_without_launching_browser() {
             "--port",
             "0",
             "--no-open",
+            "--config",
+            &cfg_path,
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -94,7 +94,7 @@ impl AppState {
     }
 
     /// Phase-2 compatibility shim for tests that pre-date the Phase-3
-    /// AppState surface. Constructs an `AppState` with:
+    /// `AppState` surface. Constructs an `AppState` with:
     ///
     /// - `kernel_canon` = `canonicalize(kernel)` falling back to `kernel`
     ///   itself when the file does not exist (tests use fake paths).
@@ -104,6 +104,12 @@ impl AppState {
     ///
     /// Tests that need to exercise watcher / `/api/config` behavior should
     /// construct `AppState` manually via [`AppState::new`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the hard-coded `schema_version = 1` trivial config fails to
+    /// parse — that would be a Plan-01 regression (the trivial config is the
+    /// minimum-syntactic-acceptance fixture).
     #[must_use]
     pub fn new_for_test(kernel: PathBuf, assets_dir: Option<PathBuf>) -> Self {
         let kernel_canon = std::fs::canonicalize(&kernel).unwrap_or_else(|_| kernel.clone());

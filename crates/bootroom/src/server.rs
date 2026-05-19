@@ -7,8 +7,10 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use axum::{Router, routing::get};
+use bootroom_core::config::LoadedConfig;
 use std::{
     net::{IpAddr, SocketAddr},
+    path::PathBuf,
     sync::Arc,
 };
 use tokio::net::TcpListener;
@@ -45,7 +47,49 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         );
     }
 
-    let state = Arc::new(AppState::new(args.kernel.clone(), args.assets_dir.clone()));
+    // Phase 3 CFG-01 / CFG-09 / WCH-05: resolve, read, and validate
+    // `bootroom.toml` BEFORE binding the listener. A bad config at startup
+    // is fatal — the operator wants the diagnostic before any client can
+    // connect (CONTEXT decision "Config live-reload": initial-load failure
+    // is FATAL; only post-startup reloads emit a deferred ConfigInvalid).
+    let config_path = args
+        .config
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("bootroom.toml"));
+    let config_content = std::fs::read_to_string(&config_path).with_context(|| {
+        format!(
+            "--config: {} (file not found or unreadable)",
+            config_path.display()
+        )
+    })?;
+    let loaded =
+        LoadedConfig::load_from_str_with_overrides(&config_content, &args.actions).map_err(|e| {
+            // Match `bootroom check`'s diagnostic format: file:line:col so the
+            // operator can copy-paste into their editor.
+            let loc = match (e.line, e.col) {
+                (Some(l), Some(c)) => format!("{}:{l}:{c}", config_path.display()),
+                _ => format!("{}", config_path.display()),
+            };
+            anyhow::anyhow!("{loc}: {}", e.message)
+        })?;
+
+    // Pitfall #1 (03-RESEARCH): canonicalize BOTH --kernel and --config at
+    // startup so the watcher (Plan 06) can compare notify events against
+    // absolute paths. Without this, a relative `--kernel ./Image` would
+    // silently miss its own rebuild events.
+    let kernel_canon = std::fs::canonicalize(&args.kernel)
+        .with_context(|| format!("--kernel canonicalize: {}", args.kernel.display()))?;
+    let config_path_canon = std::fs::canonicalize(&config_path)
+        .with_context(|| format!("--config canonicalize: {}", config_path.display()))?;
+
+    let state = Arc::new(AppState::new(
+        args.kernel.clone(),
+        kernel_canon,
+        args.assets_dir.clone(),
+        config_path,
+        config_path_canon,
+        loaded,
+    ));
     let app = build_router(state);
 
     // Parse host as IpAddr first so IPv6 literals like `::1` work — naive
@@ -147,7 +191,10 @@ mod tests {
     }
 
     fn test_state() -> Arc<AppState> {
-        Arc::new(AppState::new(PathBuf::from("/tmp/fake-kernel"), None))
+        Arc::new(AppState::new_for_test(
+            PathBuf::from("/tmp/fake-kernel"),
+            None,
+        ))
     }
 
     #[tokio::test]
@@ -197,6 +244,87 @@ mod tests {
         assert_eq!(
             resp.headers().get("cross-origin-embedder-policy").unwrap(),
             "require-corp"
+        );
+    }
+
+    /// Plan 03-05 Task 2: startup-time config validation is fatal.
+    /// A bootroom.toml with `schema_version = 99` must cause `server::run`
+    /// to return `Err` BEFORE binding the listener (the operator wants the
+    /// diagnostic before any client can connect — CONTEXT decision "Config
+    /// live-reload": initial-load failure is FATAL).
+    #[tokio::test]
+    async fn server_run_fails_on_invalid_config() {
+        use std::io::Write;
+        // A real kernel tempfile so the kernel-exists/is-file checks pass.
+        let kernel = tempfile::NamedTempFile::new().expect("kernel tempfile");
+        // Invalid config: schema_version = 99 (only 1 is supported).
+        let mut cfg = tempfile::NamedTempFile::new().expect("config tempfile");
+        cfg.write_all(b"schema_version = 99\n").expect("write");
+
+        let args = crate::cli::ServeArgs {
+            kernel: kernel.path().to_path_buf(),
+            host: "127.0.0.1".into(),
+            port: 0,
+            assets_dir: None,
+            no_open: true,
+            config: Some(cfg.path().to_path_buf()),
+            actions: vec![],
+        };
+
+        // Run with a hard timeout so a bug that lets `run` proceed past
+        // config validation and reach `axum::serve` doesn't hang the test.
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(300),
+            super::run(args),
+        )
+        .await
+        .expect("run must complete (return Err) within 300ms — config load is preflight");
+        assert!(
+            result.is_err(),
+            "server::run must return Err for schema_version=99 config"
+        );
+        let err = result.unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("99") || msg.contains("schema") || msg.contains("version"),
+            "error must mention the offending schema version, got: {msg}"
+        );
+    }
+
+    /// Plan 03-05 Task 2: the existing kernel-exists check is preserved
+    /// and fires BEFORE the new config-load path. Without this, an
+    /// operator running `bootroom serve --kernel /does/not/exist` against
+    /// a perfectly valid `bootroom.toml` would get the wrong diagnostic
+    /// (config-success-then-kernel-fail-on-bind vs. kernel-fail-up-front).
+    #[tokio::test]
+    async fn server_run_fails_on_missing_kernel_keeps_pre_existing_behavior() {
+        use std::io::Write;
+        // Valid config so the only failure point is kernel-not-found.
+        let mut cfg = tempfile::NamedTempFile::new().expect("config tempfile");
+        cfg.write_all(b"schema_version = 1\n").expect("write");
+
+        let args = crate::cli::ServeArgs {
+            kernel: PathBuf::from("/does/not/exist/at/all-bootroom-test"),
+            host: "127.0.0.1".into(),
+            port: 0,
+            assets_dir: None,
+            no_open: true,
+            config: Some(cfg.path().to_path_buf()),
+            actions: vec![],
+        };
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(300),
+            super::run(args),
+        )
+        .await
+        .expect("run must complete (return Err) within 300ms");
+        assert!(result.is_err(), "missing --kernel must still fail");
+        let msg = format!("{}", result.unwrap_err());
+        // The Phase-1 message format is preserved: `--kernel: file not found`.
+        assert!(
+            msg.contains("--kernel") && msg.contains("not found"),
+            "kernel-exists check must fire (and stay first), got: {msg}"
         );
     }
 }
