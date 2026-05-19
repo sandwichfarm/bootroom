@@ -27,6 +27,12 @@ pub use escape::{decode_bytes_escape, EscapeError};
 /// Note: `#[serde(deny_unknown_fields)]` is intentionally NOT applied —
 /// Phase 4 may add variants additively and older clients should ignore
 /// unknown fields gracefully (02-RESEARCH.md Open Question 3).
+///
+/// Phase 4 (additive): `ScenarioStart`, `ScenarioAbort`, and
+/// `ScenarioResult` extend this enum without renaming or reordering any
+/// existing variant. The `bootroom run` driver awaits a single
+/// `ScenarioResult` frame per scenario and translates `verdict` to a
+/// process exit code (RUN-01, RUN-08).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum WsMessage {
@@ -71,6 +77,46 @@ pub enum WsMessage {
         error: String,
         line: Option<u32>,
         col: Option<u32>,
+    },
+    /// Browser -> server (reserved). Sent by the scenario engine at scenario
+    /// kickoff. Phase 4 does not require the server to act on this frame —
+    /// URL-query detection (`?scenario=<name>`) is the canonical entry point
+    /// — but the variant is reserved so future server-driven re-runs
+    /// (`--watch`, v2) get the wire shape for free. Per 04-RESEARCH Open
+    /// Question 1: ship now, leave unused.
+    ScenarioStart { scenario: String },
+    /// Server -> client. Defensive cancellation. Phase 4 does not emit this
+    /// frame on any code path; reserved so a future per-server outer-timeout
+    /// path can request the browser to bail. Per 04-RESEARCH `WsMessage`
+    /// block "Server -> client. Defensive cancellation".
+    ScenarioAbort { reason: String },
+    /// Browser -> server. Final scenario verdict + full transcript. The
+    /// `bootroom run` driver awaits this frame on a `oneshot::Receiver`
+    /// (parked on `AppState`) and translates `verdict` to a process exit
+    /// code. Schema (RUN-01, RUN-08):
+    ///
+    /// - `verdict`: "pass" | "fail" | "timeout" | "error"
+    /// - `scenario`: the scenario name as run
+    /// - `started_at` / `ended_at`: ISO 8601 UTC timestamps with Z suffix
+    ///   (04-RESEARCH Open Question 3: UTC for machine-parseable logs)
+    /// - `actions`: opaque JSON — per-action verdicts + per-assertion verdicts
+    /// - `transcript`: opaque JSON — ordered event list (same shape as the
+    ///   `--log-file` JSONL stream defined in 04-06)
+    /// - `error`: optional structured message for `verdict` ∈ {"timeout", "error"}
+    ///
+    /// The two opaque-JSON fields use `serde_json::Value` (not concrete
+    /// nested structs) so the wire shape is forward-compatible: the
+    /// browser engine builds the JSON; the server only forwards bytes to
+    /// `--log-file` and translates `verdict`. Concrete nested structs
+    /// would force schema-version coupling on every event-shape change.
+    ScenarioResult {
+        verdict: String,
+        scenario: String,
+        started_at: String,
+        ended_at: String,
+        actions: serde_json::Value,
+        transcript: serde_json::Value,
+        error: Option<String>,
     },
 }
 

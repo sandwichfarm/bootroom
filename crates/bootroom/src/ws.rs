@@ -277,11 +277,21 @@ async fn handle_wire(wire: WsMessage, _tx: &mpsc::Sender<WsMessage>, _state: &Ap
         | WsMessage::Hello { .. }
         | WsMessage::KernelChanged { .. }
         | WsMessage::ConfigUpdate { .. }
-        | WsMessage::ConfigInvalid { .. } => {
+        | WsMessage::ConfigInvalid { .. }
+        | WsMessage::ScenarioAbort { .. } => {
             // Protocol error — these are server-owned message kinds.
             // Per CONTEXT.md `<deferred>` recovery posture, we log and
             // keep the connection up instead of disconnecting.
+            // (`ScenarioAbort` is server -> client per 04-RESEARCH; a
+            // client emitting it is misbehaving.)
             tracing::warn!("client sent server-owned message kind");
+        }
+        WsMessage::ScenarioStart { .. } | WsMessage::ScenarioResult { .. } => {
+            // Phase 4 reserves these for the scenario engine; the consumer
+            // wiring (oneshot park, `--log-file` forwarding) lands in plans
+            // 04-05 and 04-07. Until then, log and continue — same posture
+            // as Phase 3's `Launch` / `Reset` placeholders.
+            tracing::debug!("scenario frame received (no consumer wired yet)");
         }
     }
 }
