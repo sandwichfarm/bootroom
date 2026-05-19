@@ -11,6 +11,26 @@
 //!
 //! See `.planning/phases/03-config-buttons-watcher/03-CONTEXT.md`
 //! decision D-01 for the canonical schema shape.
+//!
+//! ## Phase 4 extensions: load-time assertion validation
+//!
+//! Two checks run at `LoadedConfig::from_config` time, after the
+//! existing scenario cross-validation loop:
+//!
+//! 1. Assertions with `kind = "regex"` have their `pattern` compiled
+//!    by the Rust `regex` crate. The supported regex feature subset
+//!    is the intersection of Rust `regex` and ECMAScript `RegExp`:
+//!    no backreferences, no lookaround. Rust is the stricter engine
+//!    — anything Rust accepts here will compile as a JS `RegExp` in
+//!    the browser scenario engine. See 04-RESEARCH Pitfall #1 for
+//!    the feature-intersection table.
+//!
+//! 2. Every assertion's `after` value must resolve to either the
+//!    literal `"any"` (universal-buffer evaluation, Pitfall #5) OR
+//!    a label that appears in THIS scenario's `actions` Vec. A
+//!    typo like `after = "rebot"` when `actions = ["reboot"]`
+//!    would silently never-match in the browser engine; rejecting
+//!    at load surfaces the typo in `bootroom check` instead.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -92,6 +112,8 @@ enum LoadErrorKind {
     DecodeBytes,
     UnknownActionRef,
     DuplicateAction,
+    InvalidRegex,
+    UnresolvableAfter,
 }
 
 /// Failure raised while parsing or validating a `bootroom.toml`.
@@ -139,6 +161,39 @@ impl LoadError {
         }
     }
 
+    fn invalid_regex(
+        scenario: &str,
+        after: &str,
+        pattern: &str,
+        err: &regex::Error,
+    ) -> Self {
+        LoadError {
+            message: format!(
+                "scenario '{scenario}' assertion (after = '{after}'): \
+                 invalid regex {pattern:?}: {err}"
+            ),
+            line: None,
+            col: None,
+            kind: LoadErrorKind::InvalidRegex,
+        }
+    }
+
+    fn unresolvable_after(scenario: &str, after: &str, legal: &[String]) -> Self {
+        // Sort legal for stable error output across runs.
+        let mut sorted = legal.to_vec();
+        sorted.sort();
+        LoadError {
+            message: format!(
+                "scenario '{scenario}' assertion: `after = {after:?}` does not \
+                 resolve. Legal values are \"any\" or one of this scenario's \
+                 actions: {sorted:?}"
+            ),
+            line: None,
+            col: None,
+            kind: LoadErrorKind::UnresolvableAfter,
+        }
+    }
+
     /// True when the failure was a `schema_version` mismatch.
     #[must_use]
     pub fn is_schema_version_mismatch(&self) -> bool {
@@ -153,6 +208,21 @@ impl LoadError {
             LoadErrorKind::SchemaMismatch { actual } => Some(actual),
             _ => None,
         }
+    }
+
+    /// True when the failure was a regex compile failure on a
+    /// `kind = "regex"` assertion pattern.
+    #[must_use]
+    pub fn is_invalid_regex(&self) -> bool {
+        matches!(self.kind, LoadErrorKind::InvalidRegex)
+    }
+
+    /// True when the failure was an `Assertion.after` that did not
+    /// resolve to either `"any"` or a label in the containing
+    /// `Scenario.actions` Vec.
+    #[must_use]
+    pub fn is_unresolvable_after(&self) -> bool {
+        matches!(self.kind, LoadErrorKind::UnresolvableAfter)
     }
 }
 
@@ -351,6 +421,43 @@ impl LoadedConfig {
             for refed in &s.actions {
                 if !actions_by_label.contains_key(refed) {
                     return Err(LoadError::unknown_action_ref(&s.name, refed));
+                }
+            }
+        }
+
+        // Phase 4 RUN-04 / RUN-05: per-assertion load-time validation.
+        //
+        // (a) Compile-check every `kind = "regex"` pattern. The browser
+        //     engine (web/scenario.js) uses JS `RegExp` for runtime
+        //     matching; the Rust `regex` crate is the STRICTER engine of
+        //     the two (no backreferences, no lookaround), so anything that
+        //     compiles in Rust here will also compile as JS RegExp. Inverse:
+        //     a pattern that uses backref / lookaround is rejected here,
+        //     which is correct — those features are not portable across the
+        //     two engines and the supported subset is pinned to
+        //     Rust regex ∩ ECMAScript RegExp. See 04-RESEARCH Pitfall #1.
+        //
+        // (b) Resolve every `after` value. Legal values are the literal
+        //     `"any"` (universal-buffer evaluation per Pitfall #5) OR
+        //     one of the labels in THIS scenario's `actions` Vec. A typo
+        //     like `after = "rebot"` when `actions = ["reboot"]` would
+        //     silently never-match in the browser engine; reject here
+        //     instead so `bootroom check` surfaces it loudly.
+        for s in &cfg.scenarios {
+            for a in &s.assertions {
+                // (a) Regex compile-check.
+                if matches!(a.kind, AssertionKind::Regex) {
+                    regex::Regex::new(&a.pattern).map_err(|e| {
+                        LoadError::invalid_regex(&s.name, &a.after, &a.pattern, &e)
+                    })?;
+                }
+                // (b) `after` resolution.
+                if a.after != "any" && !s.actions.iter().any(|act| act == &a.after) {
+                    return Err(LoadError::unresolvable_after(
+                        &s.name,
+                        &a.after,
+                        &s.actions,
+                    ));
                 }
             }
         }
