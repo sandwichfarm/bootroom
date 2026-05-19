@@ -34,7 +34,7 @@ notify.workspace = true
 notify-debouncer-full.workspace = true
 futures-util.workspace = true
 open.workspace = true
-tower.workspace = true
+tower = { workspace = true, features = ["util"] }
 tower-http.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
