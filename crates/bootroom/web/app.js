@@ -314,6 +314,85 @@ async function initialConfigLoad() {
   }
 }
 
+/**
+ * Phase 4 (RUN-01/RUN-03): if /?scenario=<name> was set, dynamically
+ * import the scenario engine (web/scenario.js, shipped by 04-08) and
+ * run the named scenario. Called from the WS Hello handler AFTER
+ * initialConfigLoad() resolves so the config is available before the
+ * engine inspects it.
+ *
+ * - No-op when scenarioName is null/empty (the serve-mode path).
+ * - Re-fetches /api/config (cheap; HTTP-cached after initialConfigLoad)
+ *   so the scenario lookup is against the same projection the buttons
+ *   were rendered from.
+ * - On missing scenario: constructs and sends a ScenarioResult error
+ *   frame inline so run_cmd's exit-code translation produces exit 1
+ *   without waiting for its outer timeout. (Rust side also validates
+ *   the name in run_cmd::run_inner BEFORE Chromium launches, so this
+ *   branch fires only when a human opens the URL manually — defense
+ *   in depth per 04-RESEARCH Open Q2.)
+ * - Dynamic import is the only entry point into scenario.js; serve
+ *   mode never pays the import cost.
+ */
+async function maybeRunScenarioFromUrlQuery() {
+  if (!scenarioName) return;
+  let config;
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) {
+      console.warn('[scenario] /api/config not ok:', res.status);
+      return;
+    }
+    config = await res.json();
+  } catch (e) {
+    console.warn('[scenario] /api/config fetch threw:', e);
+    return;
+  }
+  const scenarios = (config && config.scenarios) || [];
+  const scenario = scenarios.find((s) => s.name === scenarioName);
+  if (!scenario) {
+    const nowIso = new Date().toISOString();
+    const frame = {
+      type: 'ScenarioResult',
+      verdict: 'error',
+      scenario: scenarioName,
+      started_at: nowIso,
+      ended_at: nowIso,
+      actions: [],
+      transcript: [],
+      error: "scenario '" + scenarioName + "' not found",
+    };
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify(frame)); } catch (_e) {}
+    }
+    console.warn('[scenario] unknown scenario:', scenarioName);
+    return;
+  }
+
+  try {
+    const { runScenario } = await import('./scenario.js');
+    await runScenario(scenario, config.actions || [], { ws, funnel, master });
+  } catch (e) {
+    console.warn('[scenario] import or run threw:', e);
+    // Best-effort error frame so run_cmd doesn't have to wait for its
+    // outer timeout to translate this into exit 1.
+    const nowIso = new Date().toISOString();
+    const frame = {
+      type: 'ScenarioResult',
+      verdict: 'error',
+      scenario: scenarioName,
+      started_at: nowIso,
+      ended_at: nowIso,
+      actions: [],
+      transcript: [],
+      error: 'scenario engine failed: ' + (e && e.message ? e.message : String(e)),
+    };
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify(frame)); } catch (_e) {}
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Kernel-info fetch + header population
 // ---------------------------------------------------------------------------
@@ -509,6 +588,14 @@ const pacingMs = (Number.isFinite(parsedPacing) && parsedPacing >= 0)
   : (console.warn('[bootroom] ?pacing=' + rawPacing + ' is not a non-negative number; falling back to ' + PACING_DEFAULT_MS + 'ms'),
      PACING_DEFAULT_MS);
 
+// Phase 4 (RUN-01 / RUN-03) — scenario-mode entry point.
+// `bootroom run` navigates Chromium to /?scenario=<name>. When this
+// query is present, the engine ships via dynamic import after WS Hello
+// + initial /api/config load (see maybeRunScenarioFromUrlQuery below).
+// In `serve` mode the query is absent and the engine is never loaded
+// (zero cost — no extra fetch, no extra module evaluation).
+const scenarioName = urlParams.get('scenario');
+
 // Module-scope so the SerialOut mirror (subscribed on slave.onReadable
 // below) can read it after this module finishes evaluating. Assigned
 // inside connectWs(); may be null between disconnect and reconnect.
@@ -575,7 +662,13 @@ function handleWsFrame(frame) {
       // this point, so any ConfigUpdate that races our fetch will arrive
       // after this initial render (frame ordering preserved by axum's
       // broadcast forwarder per Plan 08).
-      initialConfigLoad().catch((e) => console.warn('[bootroom] initial config load threw:', e));
+      // Phase 4 (RUN-01/03): after the initial config is in place, chain
+      // the scenario kickoff. The helper is a no-op in serve mode
+      // (scenarioName === null), so the existing Phase 3 boot flow is
+      // unchanged for users who didn't navigate via `bootroom run`.
+      initialConfigLoad()
+        .then(maybeRunScenarioFromUrlQuery)
+        .catch((e) => console.warn('[bootroom] initial config load (or scenario kickoff) threw:', e));
       break;
     case 'SerialIn':
       try {
