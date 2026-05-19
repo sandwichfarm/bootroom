@@ -269,11 +269,16 @@ pub fn spawn_watcher(state: Arc<AppState>) -> anyhow::Result<()> {
     debouncer.watch(&config_parent, RecursiveMode::NonRecursive)?;
     debouncer.watch(&kernel_parent, RecursiveMode::NonRecursive)?;
 
-    // Box::leak: the debouncer owns an OS thread; if dropped the thread
-    // exits and we lose the watcher silently. Phase 3 has no graceful
-    // shutdown — this is documented in the module doc + threat T-03-06-04.
-    let leaked: &'static mut _ = Box::leak(Box::new(debouncer));
-    let _ = &*leaked; // suppress "unused leaked" pedantic warnings.
+    // WR-03: deliberately leak the debouncer so its owned OS thread
+    // lives for the process lifetime. If dropped the thread exits and
+    // we lose the watcher silently — Phase 3 has no graceful shutdown
+    // story (documented in the module doc + threat T-03-06-04).
+    //
+    // `std::mem::forget` is the simplest spelling: it consumes the
+    // value without running its destructor and without the dance of
+    // `Box::leak(Box::new(...))` + a no-op `let _ = &*leaked` to
+    // suppress unused-binding warnings.
+    std::mem::forget(debouncer);
 
     tracing::info!(
         config = %config_path.display(),
@@ -346,15 +351,13 @@ fn handle_kernel_change(state: &AppState) {
             i64::try_from(d.as_secs()).unwrap_or(i64::MAX)
         });
 
-    // Full SHA-256 over the kernel. Duplicate-hash trade per RESEARCH
-    // (digest_cache stays single-writer; this read is its own pass).
-    let sha256_prefix = match std::fs::read(path) {
-        Ok(bytes) => {
-            let mut hasher = Sha256::new();
-            hasher.update(&bytes);
-            let digest = hasher.finalize();
-            hex::encode(&digest[..6]) // 12 hex chars
-        }
+    // WR-01: stream the kernel into the hasher rather than reading the
+    // whole file into a Vec<u8>. RISC-V kernel images can be tens to
+    // hundreds of MB and a CI runner doing back-to-back rebuilds will
+    // spike RSS otherwise. The duplicate-hash trade-off vs the
+    // `digest_cache` path is unchanged (kept single-writer per RESEARCH).
+    let sha256_prefix = match hash_file_streaming(path) {
+        Ok(prefix) => prefix,
         Err(e) => {
             let _ = tx.send(bootroom_core::WsMessage::KernelChanged {
                 ok: false,
@@ -374,6 +377,28 @@ fn handle_kernel_change(state: &AppState) {
         sha256_prefix,
         reason: None,
     });
+}
+
+/// WR-01: SHA-256 a file in 64 KiB chunks without buffering the whole
+/// contents in memory. Returns the first 12 hex chars (= first 6 bytes
+/// of the digest), matching the prior `hex::encode(&digest[..6])` shape.
+///
+/// On a kernel of N bytes the peak heap usage is O(64 KiB) regardless
+/// of N, vs O(N) for `std::fs::read(path) -> Vec<u8>`. Sha256 itself
+/// keeps a fixed-size state, so no allocations grow with input size.
+fn hash_file_streaming(path: &std::path::Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let digest = hasher.finalize();
+    Ok(hex::encode(&digest[..6]))
 }
 
 /// Handle a debounced config-path event. Either broadcasts `ConfigUpdate`
