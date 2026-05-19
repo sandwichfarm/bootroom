@@ -83,6 +83,17 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     let config_path_canon = std::fs::canonicalize(&config_path)
         .with_context(|| format!("--config canonicalize: {}", config_path.display()))?;
 
+    // WR-08: canonicalize `--assets-dir` strictly at startup (same posture
+    // as `--kernel` and `--config`). Without this, `AppState::new` would
+    // silently `.ok()` away the failure and downstream path-traversal
+    // checks comparing against `assets_dir_canon` see `None`, with
+    // fail-open or fail-closed depending on the consumer. Failing fast
+    // here surfaces the diagnostic before any client can connect.
+    if let Some(dir) = &args.assets_dir {
+        std::fs::canonicalize(dir)
+            .with_context(|| format!("--assets-dir canonicalize: {}", dir.display()))?;
+    }
+
     // Parse host as IpAddr first so IPv6 literals like `::1` work — naive
     // `"{host}:{port}"` concatenation produces ambiguous strings such as
     // `::1:8765` which SocketAddr cannot reliably round-trip (CR-01).
@@ -328,6 +339,43 @@ mod tests {
         assert!(
             msg.contains("99") || msg.contains("schema") || msg.contains("version"),
             "error must mention the offending schema version, got: {msg}"
+        );
+    }
+
+    /// WR-08: a non-existent `--assets-dir` must fail startup rather
+    /// than silently downgrading `assets_dir_canon` to `None` (which
+    /// would leave downstream path-traversal checks comparing against
+    /// a missing canonical form). Same posture as `--kernel`/`--config`.
+    #[tokio::test]
+    async fn server_run_fails_on_missing_assets_dir() {
+        use std::io::Write;
+        let kernel = tempfile::NamedTempFile::new().expect("kernel tempfile");
+        let mut cfg = tempfile::NamedTempFile::new().expect("config tempfile");
+        cfg.write_all(b"schema_version = 1\n").expect("write cfg");
+
+        let args = crate::cli::ServeArgs {
+            kernel: kernel.path().to_path_buf(),
+            host: "127.0.0.1".into(),
+            port: 0,
+            assets_dir: Some(PathBuf::from(
+                "/does/not/exist/bootroom-assets-test-WR08",
+            )),
+            no_open: true,
+            config: Some(cfg.path().to_path_buf()),
+            actions: vec![],
+        };
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(300),
+            super::run(args),
+        )
+        .await
+        .expect("run must complete (return Err) within 300ms");
+        assert!(result.is_err(), "missing --assets-dir must fail startup");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("--assets-dir") || msg.contains("assets-dir"),
+            "error must mention --assets-dir; got: {msg}"
         );
     }
 

@@ -37,8 +37,13 @@ pub struct AppState {
     pub assets_dir: Option<PathBuf>,
     /// Canonicalized form of `assets_dir`, computed once at startup so
     /// the per-request path-traversal check (CR-02) does not need to
-    /// recursively canonicalize the root on every asset GET. `None` if
-    /// `assets_dir` is `None` or could not be canonicalized at startup.
+    /// recursively canonicalize the root on every asset GET. `None` when
+    /// `assets_dir` is `None` (no override active). WR-08: when an
+    /// override IS passed, `server::run` canonicalizes it strictly and
+    /// surfaces failure as a fatal startup error — so production code
+    /// never sees `Some(assets_dir) + None(assets_dir_canon)`. Test
+    /// fixtures may still hit the silent `.ok()` fallback below; those
+    /// tests do not exercise the per-request traversal check.
     pub assets_dir_canon: Option<PathBuf>,
     /// WR-03 cache: kernel SHA-256 keyed by `(size, mtime_sec)`. The
     /// `tokio::sync::RwLock` keeps the hot path (`read()` returning

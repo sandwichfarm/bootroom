@@ -37,7 +37,10 @@ function humanBytes(n) {
   if (n == null) return '—';
   const num = Number(n);
   if (!Number.isFinite(num) || num < 0) return '—';
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  // WR-07: include PiB and EiB so values past 1024 TiB roll up rather
+  // than displaying as "5120.0 TiB". Not realistic for a kernel image,
+  // but harmless and complete.
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
   let value = num;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) {
