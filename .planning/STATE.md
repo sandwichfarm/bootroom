@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Plan 03-06 complete (watcher subsystem: notify-debouncer-full + size-stability + ELF magic gate + project_loaded_to_json + 6 integration tests + 3 unit tests, all green). Phase 3 plans complete: 01, 02, 03, 04, 05, 06, 09, 10. Remaining: 07 (/api/config), 08 (WS forwarder), 11 (app.js render + smoke). Note: Task 1 work (Cargo.toml + watcher.rs scaffold) was swept into parallel agent's commit 669f1e4 (test(03-04)) — benign collision, all work present; Task 2 committed cleanly as 33333db."
-last_updated: "2026-05-19T11:35:00.000Z"
+stopped_at: "Plan 03-06 complete (watcher subsystem with size-stability + ELF gate + 6 integration tests, all green). Phase 3 plans complete: 01, 02, 03, 04, 05, 06, 09, 10. Remaining: 07 (/api/config), 08 (WS forwarder), 11 (app.js render + smoke)."
+last_updated: "2026-05-19T09:46:29.504Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 26
-  completed_plans: 24
-  percent: 92
+  completed_plans: 25
+  percent: 96
 ---
 
 # State: bootroom
@@ -33,7 +33,7 @@ Plan: 11 of 11
 - **Phase:** 2 — WebSocket + Live Serial — COMPLETE
 - **Plan:** 02-06 complete — `crates/bootroom/web/app.js` refactored end-to-end: imports `Funnel`, `bytesToB64`, `b64ToBytes`, `keyEventToBytes` from `./funnel.js`; constructs one `Funnel(slave)` as sole writer to `slave.write` during normal byte flow (WS-02); installs intercepting `attachCustomKeyEventHandler` returning `false` to suppress xterm's default `master.onData` dispatch (Pitfall #1 mitigation) and route bytes through funnel with `pacingMs: 0`. WS `/ws` lifecycle: `connectWs()` parses Hello (info terminal write), SerialIn (b64 -> funnel.enqueue with configurable `pacingMs`), State (uppercased to override local pill via `serverStateAuthority`); naive 1s reconnect on close (T-02-25 accept). SerialOut mirror via `slave.onReadable` -> `ws.send({type:'SerialOut',data:<b64>})` when WS open — also the trigger for LOADING -> RUNNING. 4-state pill machine (Pattern 5): IDLE (explicit at startup) -> LOADING (after `xterm.open`) -> RUNNING (`runtimeInitialized && firstSerialOutSeen` via `recomputePillLocal`) -> HALTED (Module.onExit/onAbort, clearing `serverStateAuthority`). LAUNCH/RESET = best-effort WS send + `requestAnimationFrame` + `window.location.reload()` (D-02 identical mechanism, visually distinct). CLEAR = `xterm.clear()`. COPY = selection-or-`xterm.buffer.active.translateToString(true, 0, length)` (Pitfall #5) with COPIED/COPY FAILED 1500ms flash + `[bootroom] Copy failed` terminal diagnostic on failure (T-02-29 audit trail). `?pacing=N` URL param clamped to `>= 0`, default 15ms (WS-03). 525 LOC total / 297 non-comment LOC — under plan's 350-LOC factor-out threshold; single-file preserved per Phase 1 norm. Phase 1 surface preserved unchanged: `humanBytes` (WR-07), `isoLocal`, `loadKernelInfo`, vendor-globals guard (WR-01), `FS_unlink` ENOENT-only catch (WR-08), `FS_createDataFile` swap, `Module.TTY.stream_ops.poll` patch, resize handler + rAF fits. All 12 grep gates + `node --check` + `cargo test --workspace` green on first commit. Commit 6b77b30. UI-02/03/04/06/08/09 + WS-02/03 satisfied.
 - **Status:** Executing Phase 03
-- **Progress:** [█████████░] 92%
+- **Progress:** [██████████] 96%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Carried from `PROJECT.md` Key Decisions:
 - [Phase ?]: [Phase 3]: 03-05: AppState extended with kernel_canon + config_path + config_path_canon + Arc<RwLock<LoadedConfig>> + broadcast::Sender<WsMessage>(16). server::run preflights config + canonicalize BEFORE bind; initial-load failure FATAL. new_for_test compat shim keeps Phase-2 tests intact. 5 state tests + 2 server tests + serve_no_open.rs --config adjustment. Commits 854a52a + 2851056.
 - [Phase 3]: 03-06: Watcher subsystem shipped — single `notify-debouncer-full` Debouncer (300ms window) watches `bootroom.toml` AND the kernel's parent dir simultaneously; demux by canonical-path equality. Sync OS-thread callback (RESEARCH Pitfall #2 structurally avoided — `broadcast::Sender::send` + `RwLock::blocking_write`, never `.await` / `tokio::spawn` / `tokio::sleep`). `handle_kernel_change` gates: file-exists -> 100ms size-stability inner check (Pitfall #4 / Assumption A3) -> ELF magic 4-byte sniff. Non-ELF -> `KernelChanged { ok: false, reason: "not ELF" }`. ELF -> `KernelChanged { ok: true, mtime, size, sha256_prefix }` (12 hex chars, hashed inline — duplicates `/api/kernel/info`'s read but keeps `digest_cache` single-writer per T-03-06-07). `handle_config_change`: read_to_string Err -> `ConfigInvalid` (no span); parse Err -> `ConfigInvalid { error, line, col }` (state UNCHANGED — last-known-good preserved, CFG-10 invariant); parse Ok -> `loaded_config.blocking_write()` swap + `ConfigUpdate { config: project_loaded_to_json(&loaded) }`. `project_loaded_to_json` lives in watcher.rs and is the same JSON shape Plan 07 will serve on /api/config. `Box::leak(debouncer)` for process lifetime (T-03-06-04 accept; recovery is restart). spawn_watcher called in server::run BEFORE bind. Test surface: 3 unit (projection shape/order/scenarios) + 6 integration (debounce/atomic-rename/size-stability/elf-magic/ws-frame/live-reload). Cross-agent collision note: Task 1 (Cargo.toml + watcher.rs scaffold + Cargo.lock) was swept transparently into parallel 03-04 agent's commit `669f1e4` — benign, all work present. Task 2 (server wire + 6 tests) committed cleanly as `33333db`. WCH-01..05 + CFG-10 satisfied at integration-test layer; clippy --lib --tests -D warnings clean.
 - [Phase ?]: [Phase 3]: 03-04: bootroom check (CFG-07) + bootroom init (CFG-08) wired with exit codes 0/1/2/3; EXAMPLE inlined as raw-string literal; init->check end-to-end test proves escape rendering; Plan-03 placeholder stub tests retired; main() now returns anyhow::Result<ExitCode>
+- [Phase ?]: [Phase 3]: 03-08: WS broadcast forwarder per ws connection — handle_socket subscribes to state.ws_broadcast BEFORE Hello (T-03-08-03 — frames during connection setup still delivered) and forwards every WsMessage into the existing per-conn mpsc. RecvError::Lagged -> tracing::warn skipped + continue. RecvError::Closed -> break. Three tokio tasks per connection (reader/writer/bcast_forwarder); explicit abort on disconnect for fast test teardown. Phase-2 reader/writer/Hello unchanged. New test helper spawn_with_broadcast_handle returns Arc<AppState> to publish broadcasts directly. 5 ws_broadcast_fanout integration tests cover: single-client delivery, two-client fan-out, late-join misses pre-connect (Pitfall #3 confirmed), ConfigInvalid round-trip, 20-frame burst forces Lagged but forwarder survives (21st Launch arrives). Phase-2 ws_roundtrip still 3/3 green. clippy --lib --tests -D warnings clean. WCH-05 + CFG-10 satisfied via WS push. Commits 6d2948e + 2088215.
 
 ### Architecture (from research)
 
@@ -110,7 +111,7 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-19T09:29:26.461Z
+- **Last session:** 2026-05-19T09:46:16.628Z
 - **Stopped at:** Plan 03-06 complete (watcher subsystem with size-stability + ELF gate + 6 integration tests, all green). Phase 3 plans complete: 01, 02, 03, 04, 05, 06, 09, 10. Remaining: 07 (/api/config), 08 (WS forwarder), 11 (app.js render + smoke).
 - **Next session:** Run Phase 2 verifier (`/gsd-verify-phase 02`) for outer-loop check, then plan Phase 3 via `/gsd-plan-phase 3`. Phase 3 is the headless `bootroom run --scenario …` driver (chromiumoxide-based per Spike B verdict); Phase 2's WS protocol round-trip and SerialOut mirror give Phase 3 a ready-made assertion-capture hook.
 - **Context to reload for Phase 3 planning:** `.planning/ROADMAP.md` (Phase 3 scope), `.planning/phases/01-foundation/01-08-SUMMARY.md` + `SPIKE-B-RESULT.md` (chromiumoxide verdict + headless boot proof), `crates/bootroom/spikes/spike-b/` (working spike code), `crates/bootroom-core/src/lib.rs` (`WsMessage` + `GuestState` — Phase 3 reuses the enum unchanged), `.planning/phases/02-websocket-live-serial/02-06-SUMMARY.md` (browser-side WS lifecycle + SerialOut mirror Phase 3 will consume server-side).
