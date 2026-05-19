@@ -1,0 +1,132 @@
+# deny.toml — cargo-deny configuration for bootroom.
+#
+# Purpose: mechanical enforcement of the project's license posture
+# (MIT OR Apache-2.0 + compatible permissive licenses across the dep tree)
+# and supply-chain hygiene (no git-source deps, no wildcard pins, etc.).
+#
+# Run locally:
+#     cargo install cargo-deny --locked
+#     cargo deny check
+#
+# CI runs the same command on every push and PR to master via
+# .github/workflows/ci-deny.yml.
+#
+# Schema: cargo-deny v0.14+
+# Docs:   https://embarkstudios.github.io/cargo-deny/checks/index.html
+
+[graph]
+# Check all features so platform- or feature-gated deps with different
+# license metadata are not silently skipped.
+all-features = true
+
+[output]
+# Keep the inclusion-graph output readable. cargo-deny still emits the
+# full graph when a check fails.
+feature-depth = 1
+
+# -----------------------------------------------------------------------------
+# [licenses] — the heart of D-10 / DIST-07.
+#
+# Every dependency's SPDX expression must be on the `allow` list below.
+# Anything not on the allow-list trips `unlicensed = "deny"`.
+# -----------------------------------------------------------------------------
+[licenses]
+# Trip if a crate has no license metadata at all. Forces explicit triage.
+unlicensed = "deny"
+
+# cargo-deny's recommended threshold for matching ambiguous LICENSE-file text
+# against a declared SPDX expression. Lower values cause false positives.
+confidence-threshold = 0.93
+
+# Permissive licenses compatible with bootroom's "MIT OR Apache-2.0" posture.
+# Adding to this list is a legal-posture change — require explicit review.
+allow = [
+    "MIT",                              # our own + the majority of Rust crates
+    "Apache-2.0",                       # our own + the majority of Rust crates
+    "Apache-2.0 WITH LLVM-exception",   # compiler-stack crates (e.g. rustix)
+    "BSD-2-Clause",                     # older BSD-licensed deps
+    "BSD-3-Clause",                     # older BSD-licensed deps
+    "ISC",                              # tiny utility crates (e.g. ring, untrusted)
+    "Unicode-DFS-2016",                 # unicode-ident (transitive via syn / serde-derive)
+    "Unicode-3.0",                      # newer unicode crates
+    "Zlib",                             # some compression / bindings crates
+    "CC0-1.0",                          # public-domain-equivalent
+    "BSL-1.0",                          # Boost Software License (permissive)
+    # MPL-2.0: weak copyleft. Allowed because:
+    #   (a) MPL-2.0 file-level copyleft does not impose source-disclosure
+    #       on bootroom's binary as a whole (only on modifications to the
+    #       MPL-licensed files themselves), and
+    #   (b) common transitive deps (e.g. webpki-roots) ship under it.
+    # Re-evaluate if the number of MPL-2.0 deps grows or if any direct dep
+    # of bootroom adopts MPL-2.0.
+    "MPL-2.0",
+]
+
+# Belt-and-suspenders defense — even if a license accidentally landed in
+# `allow`, these always fail. Strong-copyleft and source-available licenses.
+deny = [
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "SSPL-1.0",
+]
+
+# Per-crate license exceptions go here with rationale. Empty by default.
+exceptions = []
+
+# Crates with missing-but-known license metadata. Empty by default.
+clarify = []
+
+# -----------------------------------------------------------------------------
+# [bans] — crate-level policy.
+# -----------------------------------------------------------------------------
+[bans]
+# Workspace pins major versions, so duplicates are mostly cosmetic. Warn
+# instead of deny to keep the gate focused on legal/security issues.
+multiple-versions = "warn"
+
+# Wildcard version specifiers ("*") are not allowed. Workspace deps are all
+# pinned; any "*" indicates a regression.
+wildcards = "deny"
+
+# Crates to ban entirely. Empty by default; add with rationale.
+deny = []
+
+# -----------------------------------------------------------------------------
+# [advisories] — RustSec advisory DB checks.
+#
+# Start permissive on warn-class findings (yanked / unmaintained / unsound)
+# to avoid first-run CI failure on pre-existing items. Promote to "deny"
+# once the baseline is clean.
+# -----------------------------------------------------------------------------
+[advisories]
+# Warn on yanked crate versions.
+yanked = "warn"
+
+# `unmaintained` defaults to surfacing all advisories in this category.
+unmaintained = "all"
+
+# Warn on unsound advisories; promote to "deny" later.
+unsound = "warn"
+
+# Vetted ignores go here with rationale (advisory ID + reason). Empty by default.
+ignore = []
+
+# -----------------------------------------------------------------------------
+# [sources] — restrict where deps may come from.
+# -----------------------------------------------------------------------------
+[sources]
+# Only registries on the explicit allow-list below.
+unknown-registry = "deny"
+
+# No git-source deps. The workspace currently has none; this prevents
+# accidental regression where a dep gets pulled in via { git = "..." }.
+unknown-git = "deny"
+
+# Canonical crates.io URL.
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# Empty by default; add with rationale if a git-source dep is ever needed.
+allow-git = []
