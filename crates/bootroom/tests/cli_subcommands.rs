@@ -79,32 +79,7 @@ fn cli_init_help_includes_force() {
     );
 }
 
-/// `bootroom check` is currently a stub that exits non-zero.
-/// Plan 04 rewrites this test with real exit-code assertions (0/1/2/3).
-#[test]
-fn cli_check_stub_exits_nonzero() {
-    let out = Command::new(bin())
-        .arg("check")
-        .output()
-        .expect("run bootroom check");
-    assert!(
-        !out.status.success(),
-        "bootroom check (Plan 03 stub) must exit non-zero, got success: {:?}",
-        out.status
-    );
-}
-
-/// `bootroom init` is currently a stub that exits non-zero.
-/// Plan 04 rewrites this test with real exit-code assertions.
-#[test]
-fn cli_init_stub_exits_nonzero() {
-    let out = Command::new(bin())
-        .arg("init")
-        .output()
-        .expect("run bootroom init");
-    assert!(
-        !out.status.success(),
-        "bootroom init (Plan 03 stub) must exit non-zero, got success: {:?}",
-        out.status
-    );
-}
+// The Plan-03 placeholder stub tests `cli_check_stub_exits_nonzero` and
+// `cli_init_stub_exits_nonzero` were RETIRED by Plan 03-04. Their
+// real-behavior replacements live in `tests/check_subcommand.rs` and
+// `tests/init_subcommand.rs` respectively.
