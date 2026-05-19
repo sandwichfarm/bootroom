@@ -45,6 +45,15 @@
     <p>Bootroom requires COOP: same-origin and COEP: require-corp on every response. Open DevTools → Network and inspect the response headers on this page.</p>
   </div>
 
+  <!-- Phase 3: action buttons panel; populated by app.js renderActionButtons. -->
+  <div id="actions-panel" hidden></div>
+
+  <!-- Phase 3: fresh-kernel banner; populated by app.js KernelChanged handler. -->
+  <div id="fresh-banner" hidden></div>
+
+  <!-- Phase 3: config-invalid banner; populated by app.js ConfigInvalid handler. -->
+  <div id="config-banner" role="alert" hidden></div>
+
   <div id="terminal">
     <div class="term-ctrls">
       <button id="btn-clear" type="button">CLEAR</button>
