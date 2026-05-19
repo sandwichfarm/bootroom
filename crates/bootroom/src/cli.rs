@@ -111,14 +111,22 @@ pub struct InitArgs {
 /// Returns `Result<_, String>` (never panics) so clap renders the error as
 /// the usage error and exits 2 (clap's standard exit code for argv errors).
 fn parse_cli_action(s: &str) -> Result<CliAction, String> {
-    let eq_idx = s
-        .find('=')
-        .ok_or_else(|| format!("--action {s:?}: expected 'label=BYTES'"))?;
+    let eq_idx = s.find('=').ok_or_else(|| {
+        // WR-06: truncate the input before Debug-printing so a 10 KiB
+        // `--action junk` does not dump the whole payload into the error.
+        format!(
+            "--action {:?}: expected 'label=BYTES'",
+            truncate_for_error(s, 60)
+        )
+    })?;
     let (label, rest) = s.split_at(eq_idx);
     // `rest` starts with the `=` — strip it.
     let raw_bytes = &rest[1..];
     if label.is_empty() {
-        return Err(format!("--action {s:?}: empty label"));
+        // WR-06: when `s` starts with `=`, displaying `s` adds no
+        // information beyond what the operator typed; emit only the
+        // actionable diagnostic.
+        return Err("--action: empty label (expected 'label=BYTES')".to_string());
     }
     let bytes = decode_bytes_escape(raw_bytes)
         .map_err(|e| format!("--action {label}: {e}"))?;
@@ -126,6 +134,20 @@ fn parse_cli_action(s: &str) -> Result<CliAction, String> {
         label: label.to_owned(),
         bytes,
     })
+}
+
+/// WR-06: truncate an arbitrary user input to at most `max` UTF-8 bytes
+/// for safe inclusion in an error message. Snaps backward to a char
+/// boundary so the returned prefix is always valid UTF-8.
+fn truncate_for_error(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_owned();
+    }
+    let mut cut = max;
+    while cut > 0 && !s.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}…", &s[..cut])
 }
 
 #[cfg(test)]
