@@ -71,7 +71,7 @@ pub async fn run(args: RunArgs) -> ExitCode {
 /// distinction lives in the JSONL transcript / verbose stderr, not in
 /// the exit code.
 fn verdict_to_exit(verdict: &str) -> u8 {
-    if verdict == "pass" { 0 } else { 1 }
+    u8::from(verdict != "pass")
 }
 
 #[allow(clippy::too_many_lines)]
@@ -439,10 +439,19 @@ fn utc_now_iso8601_z() -> String {
 /// (<https://howardhinnant.github.io/date_algorithms.html#civil_from_days>),
 /// which is well-known, audited, and handles leap years + the
 /// Gregorian calendar correctly across all useful years.
+// The civil-from-days algorithm uses Howard Hinnant's canonical short
+// variable names (`doe` = day-of-era, `doy` = day-of-year, `mp` =
+// month-prime, `yoe` = year-of-era). Renaming them obscures
+// auditability against the published reference; allow the
+// similar-names lint locally.
+#[allow(clippy::similar_names)]
 fn format_iso8601_z(secs_total: u64, millis: u32) -> String {
-    // Days since 1970-01-01 (epoch).
-    let days = (secs_total / 86_400) as i64;
-    let sod = (secs_total % 86_400) as u32; // seconds-of-day
+    // Days since 1970-01-01 (epoch). u64::MAX / 86_400 fits in i64 with
+    // plenty of headroom (i64::MAX days ~= year 25e15 AD); the cast
+    // cannot wrap for any plausible `SystemTime::now()` value.
+    let days = i64::try_from(secs_total / 86_400).unwrap_or(i64::MAX);
+    // seconds-of-day: 0..86_400, always fits in u32.
+    let sod = u32::try_from(secs_total % 86_400).unwrap_or(0);
     let hour = sod / 3_600;
     let minute = (sod % 3_600) / 60;
     let second = sod % 60;
@@ -450,17 +459,18 @@ fn format_iso8601_z(secs_total: u64, millis: u32) -> String {
     // civil_from_days (Howard Hinnant). All-integer; no float.
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097) as u32;
+    // rem_euclid(146_097) is bounded to 0..146_097, always fits in u32.
+    let doe = u32::try_from(z.rem_euclid(146_097)).unwrap_or(0);
     let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
+    let y = i64::from(yoe) + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
+    let day_of_month = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = y + i64::from(m <= 2);
 
     format!(
-        "{y:04}-{m:02}-{d:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
+        "{y:04}-{m:02}-{day_of_month:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
     )
 }
 
