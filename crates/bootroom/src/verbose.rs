@@ -1,8 +1,11 @@
 //! `--verbose` stderr formatter (RUN-09).
 //!
-//! Stub module — RED phase. Tests below pin the byte-exact stderr
-//! line shape for action progress, assertion verdicts, the final
-//! scenario summary, and the non-verbose failure line.
+//! All output is ASCII-only per 04-RESEARCH Open Question 4
+//! (cross-platform CI; Windows console may not render UTF-8 cleanly).
+//! Glyphs: `> ` for action, `+ ` for pass, `- ` for fail.
+//!
+//! Format pinned by 04-06 unit tests; downstream CI tooling parses
+//! these lines with simple prefix matching.
 
 use std::io::{self, Write};
 
@@ -11,48 +14,73 @@ pub const GLYPH_PASS: &str = "+ ";
 pub const GLYPH_FAIL: &str = "- ";
 
 pub struct VerboseFormatter<W: Write> {
-    _w: std::marker::PhantomData<W>,
+    w: W,
 }
 
 impl<W: Write> VerboseFormatter<W> {
-    pub fn new(_w: W) -> Self {
-        Self {
-            _w: std::marker::PhantomData,
-        }
+    pub fn new(w: W) -> Self {
+        Self { w }
     }
 
+    /// Write one progress line for an action that is about to run.
+    ///
     /// # Errors
-    /// Always `Unsupported` in the RED phase.
-    pub fn progress_action(&mut self, _action: &str) -> io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "not implemented"))
+    ///
+    /// Propagates any I/O error from the underlying writer.
+    pub fn progress_action(&mut self, action: &str) -> io::Result<()> {
+        writeln!(self.w, "{GLYPH_ACTION}action: {action}")
     }
 
+    /// Write one assertion verdict line. The pattern is included
+    /// via Rust's `Debug` formatter (`{:?}`), which wraps in quotes
+    /// and escapes backslashes — matching what JSON/JS observers
+    /// expect when grepping CI logs.
+    ///
     /// # Errors
-    /// Always `Unsupported` in the RED phase.
+    ///
+    /// Propagates any I/O error from the underlying writer.
     pub fn assertion_verdict(
         &mut self,
-        _kind: &str,
-        _pattern: &str,
-        _passed: bool,
+        kind: &str,
+        pattern: &str,
+        passed: bool,
     ) -> io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "not implemented"))
+        let glyph = if passed { GLYPH_PASS } else { GLYPH_FAIL };
+        writeln!(self.w, "{glyph}assert: {kind} {pattern:?}")
     }
 
+    /// Write the final scenario verdict line. Any non-`"pass"` verdict
+    /// (including `"fail"`, `"timeout"`, `"error"`) uses the fail glyph.
+    ///
     /// # Errors
-    /// Always `Unsupported` in the RED phase.
-    pub fn final_summary(&mut self, _verdict: &str, _scenario: &str) -> io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "not implemented"))
+    ///
+    /// Propagates any I/O error from the underlying writer.
+    pub fn final_summary(&mut self, verdict: &str, scenario: &str) -> io::Result<()> {
+        let glyph = if verdict == "pass" {
+            GLYPH_PASS
+        } else {
+            GLYPH_FAIL
+        };
+        writeln!(self.w, "{glyph}scenario {scenario}: {verdict}")
     }
 }
 
+/// Non-verbose one-line failure summary written to stderr when
+/// `--verbose` is NOT set and the verdict is not `"pass"`.
+///
+/// 04-CONTEXT writes the failure line with an em-dash (`—`); Open Q4's
+/// ASCII-only mandate trumps, so we use a plain hyphen with surrounding
+/// spaces for cross-platform CI portability.
+///
 /// # Errors
-/// Always `Unsupported` in the RED phase.
+///
+/// Propagates any I/O error from the underlying writer.
 pub fn non_verbose_failure_line<W: Write>(
-    _w: &mut W,
-    _scenario: &str,
-    _reason: &str,
+    w: &mut W,
+    scenario: &str,
+    reason: &str,
 ) -> io::Result<()> {
-    Err(io::Error::new(io::ErrorKind::Unsupported, "not implemented"))
+    writeln!(w, "bootroom run: scenario {scenario} FAILED - {reason}")
 }
 
 #[cfg(test)]
