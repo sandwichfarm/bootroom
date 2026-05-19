@@ -216,9 +216,7 @@ async fn check_browser() -> Check {
 /// regression test for Phase-1's COOP/COEP middleware lives outside this
 /// crate.
 pub async fn check_headers() -> Check {
-    use axum::{body::Body, http::Request};
     use std::sync::Arc;
-    use tower::ServiceExt;
 
     // `new_for_test` tolerates a non-existent kernel path (state.rs:157).
     // We pass a placeholder under temp_dir so we never accidentally
@@ -230,6 +228,19 @@ pub async fn check_headers() -> Check {
         .join(format!("bootroom-doctor-noop-{}", std::process::id()));
     let state = Arc::new(crate::AppState::new_for_test(kernel, None));
     let app = crate::build_router(state);
+    check_headers_against_router(app).await
+}
+
+/// Run the COOP/COEP header check against an arbitrary `axum::Router`.
+///
+/// Factored out of [`check_headers`] (WR-04) so unit tests can pin the
+/// Fail-detail wording without spinning up a full `AppState`. Production
+/// callers use [`check_headers`] which wires in the canonical
+/// `build_router` against a placeholder kernel.
+pub async fn check_headers_against_router(app: axum::Router) -> Check {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+
     let resp = match app
         .oneshot(
             Request::builder()
@@ -444,6 +455,37 @@ pub fn format_human(checks: &[Check], overall_failed: bool) -> String {
     }
     out.push('\n');
 
+    // WR-05: catch-all section. Any check whose name does not match one
+    // of the six known section templates above renders here instead of
+    // silently disappearing. Without this, a future refactor that adds
+    // a seventh check would: (a) trip the JSON exact-set membership test
+    // (good), but (b) make the new check vanish from the human report
+    // even though it still contributes to `overall_failed` — leaving an
+    // exit-1 doctor run with no visible failure reason. KNOWN_NAMES is
+    // pinned to the six rendered above; adding a new check name to that
+    // list (without adding a section template above) is intentional and
+    // routes it through "## Other".
+    const KNOWN_NAMES: &[&str] = &[
+        "version",
+        "qemu_wasm_rev",
+        "browser",
+        "headers",
+        "config",
+        "cli_surface",
+    ];
+    let unknown: Vec<&Check> = checks
+        .iter()
+        .filter(|c| !KNOWN_NAMES.contains(&c.name.as_str()))
+        .collect();
+    if !unknown.is_empty() {
+        out.push_str("## Other\n");
+        for c in unknown {
+            out.push_str(&render_check_line(c));
+            out.push('\n');
+        }
+        out.push('\n');
+    }
+
     out.push_str(if overall_failed {
         "Overall: fail"
     } else {
@@ -637,6 +679,53 @@ mod tests {
         assert!(s.ends_with("Overall: fail"));
     }
 
+    // ----- WR-05: unknown check names appear under "## Other" -----
+
+    #[test]
+    fn format_human_renders_unknown_checks_under_other_section() {
+        let checks = vec![
+            Check {
+                name: "future_check".to_string(),
+                status: CheckStatus::Fail,
+                detail: "hypothetical seventh check".to_string(),
+            },
+        ];
+        let s = format_human(&checks, true);
+        assert!(
+            s.contains("## Other"),
+            "unknown check must surface under '## Other'; got:\n{s}"
+        );
+        assert!(
+            s.contains("future_check"),
+            "unknown check name must appear in rendered output; got:\n{s}"
+        );
+        assert!(
+            s.contains("hypothetical seventh check"),
+            "unknown check detail must appear; got:\n{s}"
+        );
+    }
+
+    #[test]
+    fn format_human_omits_other_section_when_all_checks_known() {
+        let checks = vec![
+            Check {
+                name: "version".to_string(),
+                status: CheckStatus::Info,
+                detail: "x".to_string(),
+            },
+            Check {
+                name: "headers".to_string(),
+                status: CheckStatus::Pass,
+                detail: "y".to_string(),
+            },
+        ];
+        let s = format_human(&checks, false);
+        assert!(
+            !s.contains("## Other"),
+            "no Other section when every check name is recognized; got:\n{s}"
+        );
+    }
+
     // ----- browser=Info does not set overall=fail -----
 
     #[test]
@@ -665,6 +754,42 @@ mod tests {
         assert!(
             c.detail.contains("same-origin"),
             "detail should mention same-origin; got: {}",
+            c.detail
+        );
+    }
+
+    // ----- WR-04: negative test pins Fail detail wording -----
+
+    #[tokio::test]
+    async fn check_headers_fails_on_bare_router_with_specific_detail() {
+        // A bare router with no COOP/COEP middleware is the simplest way
+        // to simulate "the Phase-1 cross-origin-isolation layer regressed
+        // out". Pin the Fail-detail wording so a future refactor that
+        // changes the message shape (e.g. drops the `expected …; got …`
+        // contract) trips this test.
+        use axum::{routing::get, Router};
+        let bare = Router::new().route("/", get(|| async { "ok" }));
+        let c = check_headers_against_router(bare).await;
+        assert_eq!(c.name, "headers");
+        assert!(
+            matches!(c.status, CheckStatus::Fail),
+            "bare router must produce Fail; got {:?} detail={}",
+            c.status,
+            c.detail
+        );
+        assert!(
+            c.detail.starts_with("expected COOP=same-origin, COEP=require-corp"),
+            "Fail detail must start with the expected-COOP/COEP contract; got: {}",
+            c.detail
+        );
+        assert!(
+            c.detail.contains("got COOP=None"),
+            "Fail detail must report `got COOP=None` when header missing; got: {}",
+            c.detail
+        );
+        assert!(
+            c.detail.contains("COEP=None"),
+            "Fail detail must report `COEP=None` when header missing; got: {}",
             c.detail
         );
     }
