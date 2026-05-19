@@ -66,6 +66,12 @@ pub async fn run(args: RunArgs) -> ExitCode {
     }
 }
 
+/// Bound for `browser.close()` / `browser.wait()` during run-mode
+/// shutdown (WR-04). Chromium normally closes in under a second; this
+/// budget exists to bound the worst case where the chromiumoxide
+/// handler task has crashed or the subprocess is wedged.
+const SHUTDOWN_BUDGET: Duration = Duration::from_secs(5);
+
 /// Translate a verdict string to the binary CI exit code. Any non-`"pass"`
 /// verdict (`"fail"`, `"timeout"`, `"error"`) collapses to exit 1 -- the
 /// distinction lives in the JSONL transcript / verbose stderr, not in
@@ -156,13 +162,14 @@ async fn run_inner(args: RunArgs) -> Result<ExitCode, ExitReason> {
             return Err(ExitReason::StartupError(msg));
         }
     };
+    // WR-06 fix: BOOTROOM_CHROMIUM_ARGS is parsed with shell-style
+    // tokenization that respects single- and double-quoted strings.
+    // The previous `split_whitespace()` mangled quoted args such as
+    // `--proxy-server="http://host:port"` into a literal quote-bearing
+    // token (which Chromium rejects).
     let extra_args = std::env::var("BOOTROOM_CHROMIUM_ARGS")
         .ok()
-        .map(|s| {
-            s.split_whitespace()
-                .map(String::from)
-                .collect::<Vec<_>>()
-        })
+        .map(|s| shell_tokenize(&s))
         .unwrap_or_default();
     let (mut browser, handler_task) = match launch_chromium(chromium, extra_args).await
     {
@@ -179,8 +186,16 @@ async fn run_inner(args: RunArgs) -> Result<ExitCode, ExitReason> {
     // then cleanup runs at lines 240-243 unconditionally, then
     // `nav_result` is consumed). NO Drop guard, NO `browser.clone()`.
     let page_work: Result<WsMessage, ExitReason> = async {
-        // 10. Navigate.
-        let url = format!("http://{bound}/?scenario={}", args.scenario);
+        // 10. Navigate. WR-02 fix: percent-encode the scenario name so
+        // operator-supplied special characters (`&`, `#`, `%`, ` `, `+`)
+        // do not corrupt the URL (e.g. `&` would split the query into
+        // two params; `#` would become a fragment). The Rust-side
+        // validator already rejects an unknown name at line 92-100,
+        // but this defends the URL parser itself.
+        let url = format!(
+            "http://{bound}/?scenario={}",
+            encode_query_component(&args.scenario),
+        );
         let page = browser
             .new_page(url.as_str())
             .await
@@ -211,14 +226,33 @@ async fn run_inner(args: RunArgs) -> Result<ExitCode, ExitReason> {
     }
     .await;
 
-    // 13. UNCONDITIONAL CLEANUP -- lifted verbatim from Spike B
+    // 13. UNCONDITIONAL CLEANUP -- lifted from Spike B
     //     (`spikes/spike-b/src/main.rs:240-243`). Runs on success AND
     //     on every error-return from the inner block.
     //
     //     Order matters: close -> wait -> handler.abort -> server.abort.
     //     `Browser` is NOT Clone; consume `browser` here directly.
-    let _ = browser.close().await;
-    let _ = browser.wait().await;
+    //
+    //     WR-04 fix: bound both close() and wait() with a 5 s budget.
+    //     Without a timeout, a wedged Chromium subprocess or a crashed
+    //     chromiumoxide handler task can block these calls indefinitely
+    //     — `bootroom run` would never exit despite holding a verdict.
+    //     5 s is generous (Chromium normally closes in < 1 s); on
+    //     overrun we abort the handler/server tasks anyway and proceed
+    //     to verdict translation. Budget lifted to a module-level const
+    //     (SHUTDOWN_BUDGET) so the value is also reachable from tests.
+    if timeout(SHUTDOWN_BUDGET, browser.close()).await.is_err() {
+        tracing::warn!(
+            "browser.close() exceeded {}s shutdown budget; forcing abort",
+            SHUTDOWN_BUDGET.as_secs()
+        );
+    }
+    if timeout(SHUTDOWN_BUDGET, browser.wait()).await.is_err() {
+        tracing::warn!(
+            "browser.wait() exceeded {}s shutdown budget",
+            SHUTDOWN_BUDGET.as_secs()
+        );
+    }
     handler_task.abort();
     server_task.abort();
 
@@ -258,19 +292,110 @@ async fn run_inner(args: RunArgs) -> Result<ExitCode, ExitReason> {
     Ok(ExitCode::from(verdict_to_exit(&verdict)))
 }
 
+/// Percent-encode the `unreserved` subset of RFC 3986 ASCII verbatim
+/// and everything else as `%XX`. Sufficient for a query-component
+/// value (the `&`, `=`, `#`, `+`, space, and `%` characters are
+/// encoded, which is what the URL parser needs).
+///
+/// Tiny inline encoder — `url::form_urlencoded` is NOT a transitive
+/// workspace dep and pulling in the full `url` crate just for this
+/// one site is disproportionate. Per-byte, ASCII-only output.
+fn encode_query_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            // RFC 3986 unreserved set.
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                use std::fmt::Write as _;
+                let _ = write!(out, "%{b:02X}");
+            }
+        }
+    }
+    out
+}
+
+/// Tokenize a string of shell-style arguments. Supports single- and
+/// double-quoted strings (no shell variable expansion, no command
+/// substitution — neither belongs in `BOOTROOM_CHROMIUM_ARGS`).
+/// Backslash escapes one character inside double quotes and outside
+/// quotes; inside single quotes it is literal (matches POSIX `sh`).
+///
+/// Inline because the only consumer is `BOOTROOM_CHROMIUM_ARGS`
+/// parsing and the dependency surface should stay small per the
+/// "single static binary, minimal deps" stance. An unterminated
+/// quoted segment is emitted as a token containing the partial body
+/// — that's the most permissive thing a tokenizer can do without
+/// failing the whole launch over an env-var typo.
+enum ShellQuote {
+    None,
+    Single,
+    Double,
+}
+
+fn shell_tokenize(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut in_token = false;
+    let mut chars = s.chars();
+    let mut q = ShellQuote::None;
+    while let Some(c) = chars.next() {
+        match (&q, c) {
+            (ShellQuote::None, ch) if ch.is_whitespace() => {
+                if in_token {
+                    out.push(std::mem::take(&mut cur));
+                    in_token = false;
+                }
+            }
+            (ShellQuote::None, '\'') => {
+                in_token = true;
+                q = ShellQuote::Single;
+            }
+            (ShellQuote::None, '"') => {
+                in_token = true;
+                q = ShellQuote::Double;
+            }
+            // Outside quotes AND inside double quotes, a backslash
+            // escapes the next character. POSIX `sh` inside double
+            // quotes only honours a subset; we accept the broader rule
+            // because the output is identical for any character not in
+            // the POSIX subset.
+            (ShellQuote::None | ShellQuote::Double, '\\') => {
+                in_token = true;
+                if let Some(next) = chars.next() {
+                    cur.push(next);
+                }
+            }
+            (ShellQuote::Single, '\'') | (ShellQuote::Double, '"') => {
+                q = ShellQuote::None;
+            }
+            (ShellQuote::None, ch) => {
+                in_token = true;
+                cur.push(ch);
+            }
+            (ShellQuote::Single | ShellQuote::Double, ch) => {
+                cur.push(ch);
+            }
+        }
+    }
+    if in_token {
+        out.push(cur);
+    }
+    out
+}
+
 /// Discover the Chromium binary. Tries three candidates in order:
-/// `$CHROMIUM` env var, `/usr/bin/chromium`, and `which chromium`.
+/// `$CHROMIUM` env var, `/usr/bin/chromium`, and a pure-Rust `$PATH`
+/// walk (WR-07).
 ///
 /// Each candidate is verified by invoking `--version` (Pitfall #6: an
 /// existence check is insufficient -- a non-Chromium binary at the
 /// path would otherwise be picked up silently).
 fn discover_chromium() -> Result<PathBuf, String> {
-    let which_out = Command::new("which")
-        .arg("chromium")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
+    let path_walk = which_via_path_env("chromium")
+        .map(|p| p.display().to_string())
         .unwrap_or_default();
     let candidates: Vec<(String, String)> = vec![
         (
@@ -278,9 +403,32 @@ fn discover_chromium() -> Result<PathBuf, String> {
             std::env::var("CHROMIUM").unwrap_or_default(),
         ),
         ("/usr/bin/chromium".into(), "/usr/bin/chromium".into()),
-        ("`which chromium`".into(), which_out),
+        ("$PATH walk for `chromium`".into(), path_walk),
     ];
     discover_chromium_with_candidates(&candidates)
+}
+
+/// Walk `$PATH` for an executable file with the given binary name.
+/// Pure Rust (no external `which` invocation) so the discovery works
+/// on minimal CI images (alpine, distroless, busybox) that lack a
+/// `which` binary AND on Windows (which has `where`, not `which`).
+/// WR-07 replacement for the previous `Command::new("which")` shell-out.
+fn which_via_path_env(bin: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    // Choose the right extension. On Windows, executables conventionally
+    // end in `.exe`; on every other platform there is no required suffix.
+    let candidate_name = if cfg!(windows) {
+        format!("{bin}.exe")
+    } else {
+        bin.to_string()
+    };
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(&candidate_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 /// Same as [`discover_chromium`] but accepts an externally-built
@@ -354,14 +502,31 @@ async fn launch_chromium(
 /// cannot run without SAB, so we fail fast with a diagnostic that
 /// points at the only realistic cause.
 async fn coi_self_check(page: &Page) -> Result<(), String> {
-    let coi: bool = page
+    // WR-05 fix: distinguish three outcomes of the eval —
+    //   1. CDP-level failure (network, page crashed, eval threw)        -> "eval failed"
+    //   2. eval returned something that is NOT a JS boolean             -> "non-bool" diag
+    //   3. eval returned `false`                                        -> COI/SAB missing diag
+    // The previous `.into_value::<bool>().unwrap_or(false)` collapsed
+    // outcome 2 into outcome 3, sending operators to inspect COOP/COEP
+    // headers when the actual cause was something else (e.g. the eval
+    // ran before `self` was ready and returned `undefined`).
+    let raw = page
         .evaluate(
             "self.crossOriginIsolated && typeof SharedArrayBuffer !== 'undefined'",
         )
         .await
-        .map_err(|e| format!("COI self-check eval failed: {e}"))?
-        .into_value::<bool>()
-        .unwrap_or(false);
+        .map_err(|e| format!("COI self-check eval failed: {e}"))?;
+    let coi: bool = raw.into_value::<bool>().map_err(|e| {
+        format!(
+            "COI self-check returned a non-bool value ({e}); \
+             this usually means the page failed to load before the eval \
+             ran, or a JS exception prevented the expression from \
+             reaching the `self.crossOriginIsolated` check. Inspect the \
+             browser console (e.g. by re-running with \
+             $BOOTROOM_CHROMIUM_ARGS=\"--headless=new --enable-logging \
+             --v=1\")."
+        )
+    })?;
     if !coi {
         return Err(coi_self_check_diagnostic().into());
     }
@@ -496,13 +661,17 @@ mod tests {
 
     #[test]
     fn discover_chromium_returns_error_when_all_missing() {
+        // The third label was renamed from `` `which chromium` `` to
+        // `$PATH walk for `chromium`` in WR-07 (the implementation no
+        // longer shells out to an external `which`). Use the new label
+        // here so this test mirrors the production candidate list.
         let cands = vec![
             ("$CHROMIUM".to_string(), String::new()),
             (
                 "/nonexistent-bootroom-test/chromium".to_string(),
                 "/nonexistent-bootroom-test/chromium".to_string(),
             ),
-            ("`which chromium`".to_string(), String::new()),
+            ("$PATH walk for `chromium`".to_string(), String::new()),
         ];
         let err = discover_chromium_with_candidates(&cands)
             .expect_err("all-missing must error");
@@ -518,8 +687,8 @@ mod tests {
             "missing /nonexistent-bootroom-test/chromium in: {err}"
         );
         assert!(
-            err.contains("`which chromium`"),
-            "missing which-chromium label in: {err}"
+            err.contains("$PATH walk"),
+            "missing $PATH-walk label in: {err}"
         );
         // Hint to set $CHROMIUM.
         assert!(
@@ -575,5 +744,81 @@ mod tests {
         // Millis < 100 must zero-pad to three digits.
         assert_eq!(format_iso8601_z(0, 7), "1970-01-01T00:00:00.007Z");
         assert_eq!(format_iso8601_z(0, 42), "1970-01-01T00:00:00.042Z");
+    }
+
+    // WR-02 lock: percent-encoder must escape every URL-special char
+    // and pass through the RFC 3986 unreserved set verbatim.
+    #[test]
+    fn encode_query_component_passes_unreserved_through() {
+        assert_eq!(
+            encode_query_component("boot_smoke-1.test~ok"),
+            "boot_smoke-1.test~ok"
+        );
+    }
+
+    #[test]
+    fn encode_query_component_escapes_url_specials() {
+        // The five "would corrupt the query" characters from WR-02.
+        assert_eq!(encode_query_component("a&b=c"), "a%26b%3Dc");
+        assert_eq!(encode_query_component("x#y"), "x%23y");
+        assert_eq!(encode_query_component("p%q"), "p%25q");
+        assert_eq!(encode_query_component("hi there"), "hi%20there");
+        assert_eq!(encode_query_component("a+b"), "a%2Bb");
+    }
+
+    #[test]
+    fn encode_query_component_escapes_non_ascii_bytes() {
+        // Non-ASCII characters are encoded as their UTF-8 byte sequence.
+        // `é` is 0xC3 0xA9 in UTF-8.
+        assert_eq!(encode_query_component("é"), "%C3%A9");
+    }
+
+    // WR-06 lock: tokenizer respects single + double quotes, backslash
+    // escapes, and trims whitespace runs.
+    #[test]
+    fn shell_tokenize_plain_whitespace_split() {
+        assert_eq!(
+            shell_tokenize("--foo --bar"),
+            vec!["--foo".to_string(), "--bar".to_string()]
+        );
+        assert_eq!(
+            shell_tokenize("  --foo\t--bar   "),
+            vec!["--foo".to_string(), "--bar".to_string()]
+        );
+    }
+
+    #[test]
+    fn shell_tokenize_double_quoted_args_with_spaces_kept_intact() {
+        // The exact case from WR-02 in the review.
+        assert_eq!(
+            shell_tokenize(r#"--proxy-server="http://host:port" --user-agent="Mozilla 5.0""#),
+            vec![
+                "--proxy-server=http://host:port".to_string(),
+                "--user-agent=Mozilla 5.0".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn shell_tokenize_single_quotes_are_literal() {
+        // Inside single quotes, backslash is literal.
+        assert_eq!(
+            shell_tokenize(r"--ua='Mozilla\5.0'"),
+            vec![r"--ua=Mozilla\5.0".to_string()]
+        );
+    }
+
+    #[test]
+    fn shell_tokenize_backslash_escape_outside_quotes() {
+        assert_eq!(
+            shell_tokenize(r"hello\ world"),
+            vec!["hello world".to_string()]
+        );
+    }
+
+    #[test]
+    fn shell_tokenize_empty_input_is_empty_vec() {
+        assert!(shell_tokenize("").is_empty());
+        assert!(shell_tokenize("   \t  ").is_empty());
     }
 }
