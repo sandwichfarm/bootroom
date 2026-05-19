@@ -1,0 +1,36 @@
+# 04-11 e2e fixture -- exercises `bootroom run` against the Spike B NORN
+# kernel at crates/bootroom/spikes/spike-b/fixtures/Image. The banner
+# pattern is lifted VERBATIM from real serial output captured via
+# `cargo run -p spike-b --example dump_banner -- --kernel <fixture>`.
+#
+# Banner choice rationale:
+#   - "[NORN ALLOC] size = 1048576" is 24 ASCII chars (well above the
+#     >=4-char floor), appears as one of the very first lines NORN
+#     emits during boot (right after the heap allocator initializes),
+#     and is deterministic across builds because the heap size is a
+#     compile-time constant in NORN's allocator setup.
+#   - It is plain ASCII with no formatting that could collide with
+#     xterm 80-column line wrap (the line is shorter than 80 chars).
+#
+# To refresh this banner after a NORN kernel update:
+#   1. cargo run -p spike-b --example dump_banner -- --kernel <new Image>
+#   2. Pick the longest stable plain-ASCII line under 80 chars.
+#   3. Update SPIKE-B-RESULT.md to reflect the refresh.
+
+schema_version = 1
+
+[[action]]
+label = "boot"
+bytes = ''
+description = "No-op action; the scenario observes whatever the kernel emits on its own."
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["boot"]
+timeout_ms = 30000
+
+  [[scenario.assert]]
+  kind = "contains"
+  pattern = "[NORN ALLOC] size = 1048576"
+  after = "boot"
+  timeout_ms = 25000
