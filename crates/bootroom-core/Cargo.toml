@@ -9,15 +9,15 @@ authors.workspace = true
 description = "Pure types and protocol definitions for bootroom (no I/O)."
 homepage = "https://github.com/sandwich-farm/bootroom"
 documentation = "https://docs.rs/bootroom-core"
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["bootroom", "qemu", "wasm", "riscv", "protocol"]
 categories = ["development-tools::testing", "wasm", "data-structures"]
 publish = true
 include = [
     "src/**/*.rs",
-    "../../LICENSE-MIT",
-    "../../LICENSE-APACHE",
-    "../../README.md",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
+    "/README.md",
 ]
 
 [dependencies]
