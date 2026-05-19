@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
+status: executing
 stopped_at: Phase 3 planned (11 plans across 6 waves, plan-checker approved after wave-renumbering fix). Ready to execute but pausing to preserve context for Phase 3 execution in a fresh session.
-last_updated: "2026-05-19T01:59:08.193Z"
+last_updated: "2026-05-19T08:46:32.767Z"
 progress:
   total_phases: 6
   completed_phases: 2
@@ -23,16 +23,16 @@ progress:
 
 **Core Value:** Press one button, get the freshest kernel running in a browser with a click-to-trigger scenario library. If everything else fails, that one path must stay friction-free.
 
-**Current Focus:** Phase 2 — WebSocket + Live Serial
+**Current Focus:** Phase 03 — Config, Buttons, Watcher
 
 ## Current Position
 
-Phase: 2 (WebSocket + Live Serial) — COMPLETE
-Plan: 6 of 6 complete (all 02-01 through 02-06 done)
+Phase: 03 (Config, Buttons, Watcher) — EXECUTING
+Plan: 1 of 11
 
 - **Phase:** 2 — WebSocket + Live Serial — COMPLETE
 - **Plan:** 02-06 complete — `crates/bootroom/web/app.js` refactored end-to-end: imports `Funnel`, `bytesToB64`, `b64ToBytes`, `keyEventToBytes` from `./funnel.js`; constructs one `Funnel(slave)` as sole writer to `slave.write` during normal byte flow (WS-02); installs intercepting `attachCustomKeyEventHandler` returning `false` to suppress xterm's default `master.onData` dispatch (Pitfall #1 mitigation) and route bytes through funnel with `pacingMs: 0`. WS `/ws` lifecycle: `connectWs()` parses Hello (info terminal write), SerialIn (b64 -> funnel.enqueue with configurable `pacingMs`), State (uppercased to override local pill via `serverStateAuthority`); naive 1s reconnect on close (T-02-25 accept). SerialOut mirror via `slave.onReadable` -> `ws.send({type:'SerialOut',data:<b64>})` when WS open — also the trigger for LOADING -> RUNNING. 4-state pill machine (Pattern 5): IDLE (explicit at startup) -> LOADING (after `xterm.open`) -> RUNNING (`runtimeInitialized && firstSerialOutSeen` via `recomputePillLocal`) -> HALTED (Module.onExit/onAbort, clearing `serverStateAuthority`). LAUNCH/RESET = best-effort WS send + `requestAnimationFrame` + `window.location.reload()` (D-02 identical mechanism, visually distinct). CLEAR = `xterm.clear()`. COPY = selection-or-`xterm.buffer.active.translateToString(true, 0, length)` (Pitfall #5) with COPIED/COPY FAILED 1500ms flash + `[bootroom] Copy failed` terminal diagnostic on failure (T-02-29 audit trail). `?pacing=N` URL param clamped to `>= 0`, default 15ms (WS-03). 525 LOC total / 297 non-comment LOC — under plan's 350-LOC factor-out threshold; single-file preserved per Phase 1 norm. Phase 1 surface preserved unchanged: `humanBytes` (WR-07), `isoLocal`, `loadKernelInfo`, vendor-globals guard (WR-01), `FS_unlink` ENOENT-only catch (WR-08), `FS_createDataFile` swap, `Module.TTY.stream_ops.poll` patch, resize handler + rAF fits. All 12 grep gates + `node --check` + `cargo test --workspace` green on first commit. Commit 6b77b30. UI-02/03/04/06/08/09 + WS-02/03 satisfied.
-- **Status:** Phase 2 complete; Phase 3 (headless driver) ready to plan
+- **Status:** Executing Phase 03
 - **Progress:** [██████████] 100%
 
 ## Performance Metrics

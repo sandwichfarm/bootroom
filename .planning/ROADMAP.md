@@ -81,7 +81,19 @@ Plans:
   3. Scenarios are declared as ordered references to actions plus optional assertions and timeouts; load-time validation rejects references to missing actions with a clear, locating error. `bootroom check` validates the config without running the server; `bootroom init` writes a minimal example.
   4. Editing `bootroom.toml` while `serve` is running updates the UI in place (no server restart).
   5. The kernel watcher uses `notify-debouncer-full` (~300ms debounce), watches the parent dir for the kernel filename (atomic-rename safe), requires size-stability across debounce ticks, sniffs ELF magic bytes (rejecting non-ELF with a UI warning), and surfaces a non-intrusive "fresher build available" banner — never auto-reloads. Manual serial typing is disabled while a scenario is running and re-enabled on completion.
-**Plans:** TBD
+**Plans:** 11 plans
+Plans:
+- [ ] 03-01-PLAN.md — bootroom-core config types + decode_bytes_escape + LoadedConfig + override merge unit tests (CFG-02..06, ACT-03)
+- [ ] 03-02-PLAN.md — WsMessage gains 3 additive variants (KernelChanged, ConfigUpdate, ConfigInvalid) + roundtrip tests (CFG-10, WCH-05)
+- [ ] 03-03-PLAN.md — CLI refactor to Cmd::{Serve,Check,Init} + ServeArgs --config + --action repeatable (CFG-01, CFG-07, CFG-08, ACT-03)
+- [ ] 03-04-PLAN.md — bootroom check + bootroom init handlers with EXAMPLE const + integration tests (CFG-07, CFG-08)
+- [ ] 03-05-PLAN.md — AppState extension: config_path + canonical paths + loaded_config + ws_broadcast (CFG-01, CFG-09, CFG-10, WCH-05)
+- [ ] 03-06-PLAN.md — watcher.rs (notify-debouncer-full + size-stability + ELF + project_loaded_to_json) + 6 integration tests (CFG-10, WCH-01..05)
+- [ ] 03-07-PLAN.md — /api/config endpoint + integration tests for shape/order/COOP/CLI overrides/--config default (CFG-01, CFG-09, ACT-01, ACT-03)
+- [ ] 03-08-PLAN.md — WS broadcast forwarder per connection + fan-out tests + Lagged handling (CFG-10, WCH-05)
+- [ ] 03-09-PLAN.md — index.html DOM containers + style.css Phase-3 rules with zero new hex outside :root (ACT-01, ACT-04, CFG-10, WCH-05)
+- [ ] 03-10-PLAN.md — funnel.js lockInput/unlockInput + setLockObserver + manual test case (ACT-04)
+- [ ] 03-11-PLAN.md — app.js renderActionButtons + resolveBanners + WS handlers + caller-side lock guards + headed smoke checkpoint (ACT-01, ACT-02, ACT-04, CFG-09, CFG-10, WCH-05)
 **UI hint:** yes
 
 ### Phase 4: Scenario Engine + Headless `run`
