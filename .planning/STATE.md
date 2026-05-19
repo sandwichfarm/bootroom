@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: "Phase 3 implementation COMPLETE. All 11 Phase-3 plans executed (01 schema/escape, 02 WsMessage variants, 03 CLI surface, 04 check/init commands, 05 AppState extension, 06 watcher, 07 /api/config, 08 WS broadcast forwarder, 09 DOM/CSS, 10 funnel lock primitive, 11 app.js browser-side state machine). Plan 03-11 is commit 621aa2a (332 net new LOC in `crates/bootroom/web/app.js`). All automated gates green: 10 grep gates + `node --check` + `cargo test -p bootroom` 100/100 across 23 test suites. innerHTML count preserved at the Phase-1+2 baseline of 2 (T-03-11-01 XSS-mitigation gate). Headed-browser smoke (Plan 11 Task 2 `checkpoint:human-verify`, 9 verification steps spanning ACT-01/02/04 + CFG-09/10 + WCH-04/05 + banner-ladder + Phase-2 preservation) DEFERRED — autonomous-mode execution had no human in the loop, and qemu-wasm assets are not present (Phase-1 blocker 01-02 still open: docker build for qemu-wasm needs ≥10G free disk; host was at 98%)."
+status: paused
+stopped_at: "Phase 3 fully closed (impl + code review fixes + verification + UI audit). All 11 plans complete, 100+ tests green, 3 critical review findings (WS deadlock CR-01, missing Origin gate CR-02, watcher inotify orphan CR-03) and 6 warning findings fixed with regression tests; 1 latent UI bug noted (fresh-banner dismiss not durable across resolveBanners re-runs — UI-REVIEW.md 9f65073). Verification 15/19 (4 human-needed items deferred — require qemu-wasm + headed browser). Pausing before Phase 4 (Scenario Engine + Headless `run`) to preserve context window for the next autonomous run. Resume with: /gsd-autonomous --from 4"
 last_updated: "2026-05-19T11:05:34.670Z"
 progress:
   total_phases: 6
