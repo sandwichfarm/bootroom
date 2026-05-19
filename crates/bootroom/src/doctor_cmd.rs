@@ -203,7 +203,12 @@ fn check_browser() -> Check {
 /// so a header regression in tower-http middleware (or in the layer
 /// stack ordering) trips immediately. Bounded by router logic — no
 /// network, no kernel I/O.
-async fn check_headers() -> Check {
+///
+/// Exposed `pub` so integration tests in `tests/doctor_headers_check.rs`
+/// can call this directly (Option A in 05-05-PLAN.md) — the load-bearing
+/// regression test for Phase-1's COOP/COEP middleware lives outside this
+/// crate.
+pub async fn check_headers() -> Check {
     use axum::{body::Body, http::Request};
     use std::sync::Arc;
     use tower::ServiceExt;
