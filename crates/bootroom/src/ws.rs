@@ -298,7 +298,11 @@ async fn handle_wire(wire: WsMessage, _tx: &mpsc::Sender<WsMessage>, _state: &Ap
 
 #[cfg(test)]
 mod tests {
-    use super::truncate_for_log;
+    use super::{handle_wire, truncate_for_log};
+    use crate::state::AppState;
+    use bootroom_core::WsMessage;
+    use std::path::PathBuf;
+    use tokio::sync::mpsc;
 
     #[test]
     fn truncate_for_log_passthrough_under_limit() {
@@ -331,5 +335,108 @@ mod tests {
         // but checking by re-encoding it via String::from_utf8 makes
         // the intent explicit).
         assert!(String::from_utf8(out.into_bytes()).is_ok());
+    }
+
+    // -------------------------------------------------------------------
+    // Phase 4 plan 04-05: handle_wire arms for the three new variants.
+    //
+    // The match block in handle_wire must:
+    //   - recognize ScenarioResult and forward via state.take_scenario_result_tx()
+    //   - recognize ScenarioStart and no-op (log only)
+    //   - reject ScenarioAbort arriving from the client (server-owned)
+    // -------------------------------------------------------------------
+
+    fn sample_scenario_result(verdict: &str) -> WsMessage {
+        WsMessage::ScenarioResult {
+            verdict: verdict.to_owned(),
+            scenario: "boot_smoke".into(),
+            started_at: "2026-05-19T14:32:01.123Z".into(),
+            ended_at: "2026-05-19T14:32:03.311Z".into(),
+            actions: serde_json::json!([{"label":"reboot","verdict":verdict}]),
+            transcript: serde_json::json!([
+                {"ts":"2026-05-19T14:32:01.123Z","type":"scenario_start"}
+            ]),
+            error: None,
+        }
+    }
+
+    /// Serve mode: no oneshot installed. A ScenarioResult frame must be
+    /// dropped with a warn (verified indirectly — the function returns
+    /// without panic; there is no receiver to consult).
+    #[tokio::test]
+    async fn handle_wire_scenario_result_serve_mode_warns_and_continues() {
+        let state = AppState::new_for_test(PathBuf::from("/tmp/x"), None);
+        let (tx, _rx) = mpsc::channel::<WsMessage>(8);
+
+        // No `install_scenario_oneshot()` was called -> serve mode.
+        let frame = sample_scenario_result("pass");
+        handle_wire(frame, &tx, &state).await;
+
+        // After the call, the slot is still empty.
+        assert!(
+            state.take_scenario_result_tx().await.is_none(),
+            "serve mode: slot must remain empty after ScenarioResult"
+        );
+    }
+
+    /// Run mode: install the oneshot, then a single ScenarioResult frame
+    /// must arrive on the receiver byte-for-byte.
+    #[tokio::test]
+    async fn handle_wire_scenario_result_run_mode_delivers_to_oneshot() {
+        let state = AppState::new_for_test(PathBuf::from("/tmp/x"), None);
+        let rx_oneshot = state.install_scenario_oneshot().await;
+        let (tx, _rx) = mpsc::channel::<WsMessage>(8);
+
+        let frame = sample_scenario_result("pass");
+        handle_wire(frame.clone(), &tx, &state).await;
+
+        let delivered = rx_oneshot
+            .await
+            .expect("oneshot must deliver after handle_wire");
+        assert_eq!(delivered, frame);
+    }
+
+    /// Run mode, duplicate frame: the second ScenarioResult sees an
+    /// already-taken slot and falls into the warn-and-continue branch.
+    #[tokio::test]
+    async fn handle_wire_scenario_result_second_frame_in_run_mode_warns() {
+        let state = AppState::new_for_test(PathBuf::from("/tmp/x"), None);
+        let _rx_oneshot = state.install_scenario_oneshot().await;
+        let (tx, _rx) = mpsc::channel::<WsMessage>(8);
+
+        // First frame consumes the slot.
+        handle_wire(sample_scenario_result("pass"), &tx, &state).await;
+        // Slot is empty now.
+        assert!(state.take_scenario_result_tx().await.is_none());
+
+        // Re-install nothing — a second frame must still warn-and-continue,
+        // not panic.
+        handle_wire(sample_scenario_result("fail"), &tx, &state).await;
+    }
+
+    /// ScenarioStart is reserved/no-op.
+    #[tokio::test]
+    async fn handle_wire_scenario_start_is_no_op() {
+        let state = AppState::new_for_test(PathBuf::from("/tmp/x"), None);
+        let (tx, _rx) = mpsc::channel::<WsMessage>(8);
+
+        // No oneshot installed; ScenarioStart must not touch the slot.
+        let frame = WsMessage::ScenarioStart {
+            scenario: "boot_smoke".into(),
+        };
+        handle_wire(frame, &tx, &state).await;
+        assert!(state.take_scenario_result_tx().await.is_none());
+    }
+
+    /// ScenarioAbort from client is server-owned; warn arm, no panic.
+    #[tokio::test]
+    async fn handle_wire_scenario_abort_from_client_warns() {
+        let state = AppState::new_for_test(PathBuf::from("/tmp/x"), None);
+        let (tx, _rx) = mpsc::channel::<WsMessage>(8);
+
+        let frame = WsMessage::ScenarioAbort {
+            reason: "test".into(),
+        };
+        handle_wire(frame, &tx, &state).await;
     }
 }
