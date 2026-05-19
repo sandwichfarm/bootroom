@@ -11,12 +11,13 @@ pub mod headers;
 pub mod init_cmd;
 pub mod kernel_info;
 pub mod kernel_stream;
+pub mod run_cmd;
 pub mod server;
 pub mod state;
 pub mod watcher;
 pub mod ws;
 
 // Re-export the surface tests will use.
-pub use cli::{CheckArgs, Cli, Cmd, InitArgs, ServeArgs};
+pub use cli::{CheckArgs, Cli, Cmd, CommonArgs, InitArgs, RunArgs, ServeArgs};
 pub use server::build_router;
 pub use state::AppState;
