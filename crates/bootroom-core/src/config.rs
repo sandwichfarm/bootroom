@@ -617,6 +617,268 @@ bytes = "c"
 
     // --- Source-TOML duplicate labels rejected --------------------------
 
+    // --- Phase 4 RUN-04: regex compile-check at load -------------------
+
+    #[test]
+    fn regex_assertion_valid_pattern_loads_ok() {
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "regex"
+  pattern = 'Booting[a-z]+'
+  after = "reboot"
+"#;
+        LoadedConfig::load_from_str(s).expect("valid regex must load");
+    }
+
+    #[test]
+    fn regex_assertion_invalid_pattern_rejected() {
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "regex"
+  pattern = 'unclosed['
+  after = "reboot"
+"#;
+        let err = LoadedConfig::load_from_str(s).expect_err("unclosed [ must fail");
+        assert!(err.is_invalid_regex(), "is_invalid_regex; full: {err:?}");
+        assert!(
+            err.message.contains("boot_smoke"),
+            "must name scenario; got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("reboot"),
+            "must name after-label; got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("unclosed["),
+            "must include offending pattern; got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn regex_assertion_backref_rejected() {
+        // Backreferences are JS-only; Rust `regex` rejects them. This is
+        // exactly the intersection-subset policy (Pitfall #1 in 04-RESEARCH).
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "regex"
+  pattern = '(a)\1'
+  after = "reboot"
+"#;
+        let err = LoadedConfig::load_from_str(s).expect_err("backref must fail");
+        assert!(err.is_invalid_regex(), "is_invalid_regex; full: {err:?}");
+    }
+
+    #[test]
+    fn regex_assertion_lookaround_rejected() {
+        // Lookaround is JS-only; Rust `regex` rejects it.
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "regex"
+  pattern = '(?=foo)'
+  after = "reboot"
+"#;
+        let err = LoadedConfig::load_from_str(s).expect_err("lookaround must fail");
+        assert!(err.is_invalid_regex(), "is_invalid_regex; full: {err:?}");
+    }
+
+    #[test]
+    fn contains_assertion_with_bracket_loads_ok() {
+        // `kind = "contains"` is substring; the pattern is a literal,
+        // not a regex. An unclosed `[` is therefore fine.
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "contains"
+  pattern = 'unclosed['
+  after = "reboot"
+"#;
+        LoadedConfig::load_from_str(s).expect("contains assertion must load");
+    }
+
+    // --- Phase 4 RUN-05: `after`-resolution check at load --------------
+
+    #[test]
+    fn assertion_after_resolves_to_scenario_action_loads_ok() {
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "contains"
+  pattern = "login: "
+  after = "reboot"
+"#;
+        LoadedConfig::load_from_str(s).expect("after=reboot is in actions, must load");
+    }
+
+    #[test]
+    fn assertion_after_any_loads_ok() {
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "contains"
+  pattern = "login: "
+  after = "any"
+"#;
+        LoadedConfig::load_from_str(s).expect("after=any is always legal");
+    }
+
+    #[test]
+    fn assertion_after_typo_rejected() {
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "contains"
+  pattern = "login: "
+  after = "rebot"
+"#;
+        let err = LoadedConfig::load_from_str(s).expect_err("typo must fail");
+        assert!(
+            err.is_unresolvable_after(),
+            "is_unresolvable_after; full: {err:?}"
+        );
+        assert!(
+            err.message.contains("boot_smoke"),
+            "must name scenario; got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("rebot"),
+            "must surface offending after value; got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("reboot"),
+            "must list legal action label; got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("any"),
+            "must mention 'any' as a universal-legal value; got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn assertion_after_references_action_not_in_scenario_rejected() {
+        // "ls" is a top-level action label but is NOT in `boot_smoke`'s
+        // `actions` Vec — so the assertion `after = "ls"` is unresolvable
+        // inside this scenario even though `ls` is otherwise a known label.
+        let s = r#"
+schema_version = 1
+
+[[action]]
+label = "reboot"
+bytes = "x"
+
+[[action]]
+label = "ls"
+bytes = "y"
+
+[[scenario]]
+name = "boot_smoke"
+actions = ["reboot"]
+
+  [[scenario.assert]]
+  kind = "contains"
+  pattern = "login: "
+  after = "ls"
+"#;
+        let err = LoadedConfig::load_from_str(s)
+            .expect_err("after=ls must fail; ls is not in this scenario");
+        assert!(
+            err.is_unresolvable_after(),
+            "is_unresolvable_after; full: {err:?}"
+        );
+        assert!(
+            err.message.contains("boot_smoke"),
+            "must name scenario; got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("ls"),
+            "must surface offending after value; got: {}",
+            err.message
+        );
+    }
+
     #[test]
     fn duplicate_toml_action_labels_rejected() {
         let s = r#"
