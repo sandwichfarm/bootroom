@@ -50,6 +50,23 @@
  * enforceable instance privacy for non-`#` fields). Do not mutate them
  * directly; defense-in-depth only — bootroom is a loopback dev tool, no
  * adversarial caller is in scope.
+ *
+ * Lock primitive (Phase 3 addition, ACT-04): the funnel exposes a
+ * `locked: boolean` flag plus idempotent `lockInput()` / `unlockInput()`
+ * methods, and a module-level `setLockObserver(cb)` export. The lock
+ * SHIPS UNUSED in Phase 3 — Phase 4's scenario engine is the first
+ * caller. Critically, `enqueue` does NOT short-circuit on `this.locked`:
+ * server-initiated `SerialIn` frames (i.e. the scenario engine's own
+ * writes) must keep flowing during a lock; otherwise the engine would
+ * self-block. The lock is enforced at the CALLER — `xterm.onData`'s
+ * key-event handler and `.action-btn` click handlers in app.js check
+ * `funnel.locked` and short-circuit before calling enqueue. See
+ * `.planning/phases/03-config-buttons-watcher/03-CONTEXT.md`
+ * `<decisions>` → "Funnel input lock primitive" for the locked decision,
+ * and UI-SPEC Interaction Contract 9 for the manual DevTools test.
+ * `setLockObserver` is the one-way feedback channel app.js uses to flip
+ * the status pill to `BUSY` and toggle `.action-btn[disabled]` when the
+ * lock state changes.
  */
 
 export class Funnel {
@@ -68,6 +85,15 @@ export class Funnel {
     /** Array of [byte:number, pacingMs:number] tuples. */
     this.queue = [];
     this.draining = false;
+    /**
+     * Input-lock flag. Default `false`. Mutated only via `lockInput()` /
+     * `unlockInput()`. Observed by callers (xterm.onData + action-button
+     * click handlers in app.js) which short-circuit before invoking
+     * `enqueue`. The funnel itself does NOT consult this flag — see
+     * 03-CONTEXT.md `<decisions>` "Funnel input lock primitive" for the
+     * rationale (server-initiated `SerialIn` frames must keep flowing).
+     */
+    this.locked = false;
   }
 
   /**
@@ -83,6 +109,32 @@ export class Funnel {
       this.draining = true;
       this.#drain().finally(() => { this.draining = false; });
     }
+  }
+
+  /**
+   * Mark host-originated input as locked. Idempotent — repeated calls
+   * while already locked are no-ops (observer is NOT re-fired). The
+   * `this.locked` flag is observed by callers (xterm.onData, action-btn
+   * click handlers in app.js) which short-circuit before calling
+   * enqueue; enqueue itself is lock-agnostic so server-initiated
+   * SerialIn frames continue to flow during scenario execution.
+   * See UI-SPEC Interaction Contract 9 for the manual DevTools test.
+   */
+  lockInput() {
+    if (this.locked === true) return;
+    this.locked = true;
+    _notifyLockObserver(true);
+  }
+
+  /**
+   * Release the input lock. Idempotent — no-op when already unlocked
+   * (observer is NOT re-fired). See UI-SPEC Interaction Contract 9 for
+   * the manual DevTools test.
+   */
+  unlockInput() {
+    if (this.locked === false) return;
+    this.locked = false;
+    _notifyLockObserver(false);
   }
 
   async #drain() {
@@ -107,6 +159,41 @@ export class Funnel {
       }
       if (ms > 0) await new Promise(r => setTimeout(r, ms));
     }
+  }
+}
+
+/**
+ * Module-level lock-state observer. Exactly one observer at a time
+ * (app.js is the sole expected consumer in Phase 4+). Default no-op so
+ * `lockInput`/`unlockInput` can be called safely before any observer is
+ * registered. See 03-CONTEXT.md `<decisions>` "Funnel input lock
+ * primitive".
+ */
+let _lockObserver = () => {};
+
+/**
+ * Register the single lock-state observer. Replaces any previous
+ * observer. Defensive: non-function input falls back to the no-op
+ * observer (avoids a TypeError inside the lockInput/unlockInput call
+ * site).
+ * @param {(locked: boolean) => void} cb
+ */
+export function setLockObserver(cb) {
+  _lockObserver = typeof cb === 'function' ? cb : () => {};
+}
+
+/**
+ * Invoke the registered lock observer with the new `locked` value.
+ * Observer-throws must NOT prevent the lock state change from taking
+ * effect (mirrors the WR-05 try/catch around `writeFromLower` in
+ * `#drain`). T-03-10-01 mitigation.
+ * @param {boolean} value
+ */
+function _notifyLockObserver(value) {
+  try {
+    _lockObserver(value);
+  } catch (e) {
+    console.warn('[funnel] lock observer threw:', e);
   }
 }
 
@@ -240,4 +327,26 @@ function enc(s) { return new TextEncoder().encode(s); }
  *      console.assert(up.length === 3 && up[0]===0x1b && up[1]===0x5b && up[2]===0x41);
  *      console.assert(keyEventToBytes(ke({key:'Shift'})) === null);
  *    Expected: each assertion passes.
+ *
+ * 6. lockInput / unlockInput + observer (Phase 3, ACT-04 — UI-SPEC
+ *    Interaction Contract 9):
+ *    Import `setLockObserver` alongside `funnel` and run in DevTools:
+ *      setLockObserver(v => console.log('lock changed →', v));
+ *      funnel.lockInput();              // expect: lock changed → true
+ *      funnel.lockInput();              // expect: NO new log (idempotent)
+ *      console.assert(funnel.locked === true);
+ *      funnel.unlockInput();            // expect: lock changed → false
+ *      funnel.unlockInput();            // expect: NO new log (idempotent)
+ *      console.assert(funnel.locked === false);
+ *    Expected: exactly two observer fires across the four calls; the
+ *    `locked` flag reflects the most recent state transition.
+ *
+ *    With Plan 11 wired (caller-side guards in app.js): `funnel.lockInput()`
+ *    additionally flips the status pill to `BUSY` and disables every
+ *    `.action-btn`; `funnel.unlockInput()` restores the previous pill
+ *    state and re-enables the action buttons. The funnel itself is
+ *    lock-agnostic — `funnel.enqueue(...)` still flows bytes regardless
+ *    of `this.locked`, which is the locked decision in 03-CONTEXT.md
+ *    `<decisions>` "Funnel input lock primitive" (so server-initiated
+ *    SerialIn frames from the scenario engine don't self-block).
  */
