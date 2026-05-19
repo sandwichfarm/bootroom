@@ -17,3 +17,10 @@ install-path = "CARGO_HOME"
 hosting = "github"
 # Whether to install an updater program
 install-updater = false
+# Custom pre-publish smoke job (06-06): runs the release-smoke reusable
+# workflow during the host phase. cargo-dist will inject a `needs:`
+# reference into the generated release.yml so the `host` job (which
+# performs `gh release create`) only proceeds when the smoke is green.
+# The referenced file is `.github/workflows/release-smoke.yml`; cargo-dist
+# resolves the `./release-smoke` prefix relative to `.github/workflows/`.
+host-jobs = ["./release-smoke"]
