@@ -84,15 +84,15 @@ Plans:
 **Plans:** 11 plans
 Plans:
 - [ ] 03-01-PLAN.md — bootroom-core config types + decode_bytes_escape + LoadedConfig + override merge unit tests (CFG-02..06, ACT-03)
-- [ ] 03-02-PLAN.md — WsMessage gains 3 additive variants (KernelChanged, ConfigUpdate, ConfigInvalid) + roundtrip tests (CFG-10, WCH-05)
+- [x] 03-02-PLAN.md — WsMessage gains 3 additive variants (KernelChanged, ConfigUpdate, ConfigInvalid) + roundtrip tests (CFG-10, WCH-05)
 - [ ] 03-03-PLAN.md — CLI refactor to Cmd::{Serve,Check,Init} + ServeArgs --config + --action repeatable (CFG-01, CFG-07, CFG-08, ACT-03)
 - [ ] 03-04-PLAN.md — bootroom check + bootroom init handlers with EXAMPLE const + integration tests (CFG-07, CFG-08)
 - [ ] 03-05-PLAN.md — AppState extension: config_path + canonical paths + loaded_config + ws_broadcast (CFG-01, CFG-09, CFG-10, WCH-05)
 - [ ] 03-06-PLAN.md — watcher.rs (notify-debouncer-full + size-stability + ELF + project_loaded_to_json) + 6 integration tests (CFG-10, WCH-01..05)
 - [ ] 03-07-PLAN.md — /api/config endpoint + integration tests for shape/order/COOP/CLI overrides/--config default (CFG-01, CFG-09, ACT-01, ACT-03)
 - [ ] 03-08-PLAN.md — WS broadcast forwarder per connection + fan-out tests + Lagged handling (CFG-10, WCH-05)
-- [ ] 03-09-PLAN.md — index.html DOM containers + style.css Phase-3 rules with zero new hex outside :root (ACT-01, ACT-04, CFG-10, WCH-05)
-- [ ] 03-10-PLAN.md — funnel.js lockInput/unlockInput + setLockObserver + manual test case (ACT-04)
+- [x] 03-09-PLAN.md — index.html DOM containers + style.css Phase-3 rules with zero new hex outside :root (ACT-01, ACT-04, CFG-10, WCH-05)
+- [x] 03-10-PLAN.md — funnel.js lockInput/unlockInput + setLockObserver + manual test case (ACT-04)
 - [ ] 03-11-PLAN.md — app.js renderActionButtons + resolveBanners + WS handlers + caller-side lock guards + headed smoke checkpoint (ACT-01, ACT-02, ACT-04, CFG-09, CFG-10, WCH-05)
 **UI hint:** yes
 

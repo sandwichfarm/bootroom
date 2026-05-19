@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Plan 03-10 complete (Funnel lock primitive shipped); ready for Plan 03-11
-last_updated: "2026-05-19T08:54:06.584Z"
+last_updated: "2026-05-19T08:58:37.493Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 26
-  completed_plans: 17
-  percent: 65
+  completed_plans: 18
+  percent: 69
 ---
 
 # State: bootroom
@@ -33,7 +33,7 @@ Plan: 10 of 11
 - **Phase:** 2 — WebSocket + Live Serial — COMPLETE
 - **Plan:** 02-06 complete — `crates/bootroom/web/app.js` refactored end-to-end: imports `Funnel`, `bytesToB64`, `b64ToBytes`, `keyEventToBytes` from `./funnel.js`; constructs one `Funnel(slave)` as sole writer to `slave.write` during normal byte flow (WS-02); installs intercepting `attachCustomKeyEventHandler` returning `false` to suppress xterm's default `master.onData` dispatch (Pitfall #1 mitigation) and route bytes through funnel with `pacingMs: 0`. WS `/ws` lifecycle: `connectWs()` parses Hello (info terminal write), SerialIn (b64 -> funnel.enqueue with configurable `pacingMs`), State (uppercased to override local pill via `serverStateAuthority`); naive 1s reconnect on close (T-02-25 accept). SerialOut mirror via `slave.onReadable` -> `ws.send({type:'SerialOut',data:<b64>})` when WS open — also the trigger for LOADING -> RUNNING. 4-state pill machine (Pattern 5): IDLE (explicit at startup) -> LOADING (after `xterm.open`) -> RUNNING (`runtimeInitialized && firstSerialOutSeen` via `recomputePillLocal`) -> HALTED (Module.onExit/onAbort, clearing `serverStateAuthority`). LAUNCH/RESET = best-effort WS send + `requestAnimationFrame` + `window.location.reload()` (D-02 identical mechanism, visually distinct). CLEAR = `xterm.clear()`. COPY = selection-or-`xterm.buffer.active.translateToString(true, 0, length)` (Pitfall #5) with COPIED/COPY FAILED 1500ms flash + `[bootroom] Copy failed` terminal diagnostic on failure (T-02-29 audit trail). `?pacing=N` URL param clamped to `>= 0`, default 15ms (WS-03). 525 LOC total / 297 non-comment LOC — under plan's 350-LOC factor-out threshold; single-file preserved per Phase 1 norm. Phase 1 surface preserved unchanged: `humanBytes` (WR-07), `isoLocal`, `loadKernelInfo`, vendor-globals guard (WR-01), `FS_unlink` ENOENT-only catch (WR-08), `FS_createDataFile` swap, `Module.TTY.stream_ops.poll` patch, resize handler + rAF fits. All 12 grep gates + `node --check` + `cargo test --workspace` green on first commit. Commit 6b77b30. UI-02/03/04/06/08/09 + WS-02/03 satisfied.
 - **Status:** Executing Phase 03
-- **Progress:** [███████░░░] 65%
+- **Progress:** [███████░░░] 69%
 
 ## Performance Metrics
 
@@ -105,7 +105,7 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-19T08:54:06.575Z
+- **Last session:** 2026-05-19T08:58:37.485Z
 - **Stopped at:** Plan 03-10 complete (Funnel lock primitive shipped); ready for Plan 03-11
 - **Next session:** Run Phase 2 verifier (`/gsd-verify-phase 02`) for outer-loop check, then plan Phase 3 via `/gsd-plan-phase 3`. Phase 3 is the headless `bootroom run --scenario …` driver (chromiumoxide-based per Spike B verdict); Phase 2's WS protocol round-trip and SerialOut mirror give Phase 3 a ready-made assertion-capture hook.
 - **Context to reload for Phase 3 planning:** `.planning/ROADMAP.md` (Phase 3 scope), `.planning/phases/01-foundation/01-08-SUMMARY.md` + `SPIKE-B-RESULT.md` (chromiumoxide verdict + headless boot proof), `crates/bootroom/spikes/spike-b/` (working spike code), `crates/bootroom-core/src/lib.rs` (`WsMessage` + `GuestState` — Phase 3 reuses the enum unchanged), `.planning/phases/02-websocket-live-serial/02-06-SUMMARY.md` (browser-side WS lifecycle + SerialOut mirror Phase 3 will consume server-side).

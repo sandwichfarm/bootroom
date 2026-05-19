@@ -56,7 +56,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CFG-07**: `bootroom check` subcommand validates the config without running the server.
 - [ ] **CFG-08**: `bootroom init` writes a minimal example `bootroom.toml`.
 - [ ] **CFG-09**: Action button order in the UI is stable (preserved from TOML insertion order).
-- [ ] **CFG-10**: Live reload of `bootroom.toml`: editing the file updates the UI in place (no server restart).
+- [x] **CFG-10**: Live reload of `bootroom.toml`: editing the file updates the UI in place (no server restart).
 
 ### Action Buttons
 
@@ -71,7 +71,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **WCH-02**: Detects atomic-rename builds (watches the parent dir for the kernel filename).
 - [ ] **WCH-03**: Requires size-stability across debounce ticks before considering a new build ready.
 - [ ] **WCH-04**: Sniffs ELF magic bytes; rejects non-ELF files with a UI warning.
-- [ ] **WCH-05**: A new build surfaces a non-intrusive "fresher build available" banner; user (or CI) triggers Launch — never auto-reload by default.
+- [x] **WCH-05**: A new build surfaces a non-intrusive "fresher build available" banner; user (or CI) triggers Launch — never auto-reload by default.
 
 ### Headless / CI (`run` mode)
 
@@ -179,7 +179,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CFG-07 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-08 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-09 | Phase 3 — Config, Buttons, Watcher | Pending |
-| CFG-10 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-10 | Phase 3 — Config, Buttons, Watcher | Complete |
 | ACT-01 | Phase 3 — Config, Buttons, Watcher | Pending |
 | ACT-02 | Phase 3 — Config, Buttons, Watcher | Pending |
 | ACT-03 | Phase 3 — Config, Buttons, Watcher | Pending |
@@ -188,7 +188,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WCH-02 | Phase 3 — Config, Buttons, Watcher | Pending |
 | WCH-03 | Phase 3 — Config, Buttons, Watcher | Pending |
 | WCH-04 | Phase 3 — Config, Buttons, Watcher | Pending |
-| WCH-05 | Phase 3 — Config, Buttons, Watcher | Pending |
+| WCH-05 | Phase 3 — Config, Buttons, Watcher | Complete |
 | RUN-01 | Phase 4 — Scenario Engine + Headless | Pending |
 | RUN-02 | Phase 4 — Scenario Engine + Headless | Pending |
 | RUN-03 | Phase 4 — Scenario Engine + Headless | Pending |
