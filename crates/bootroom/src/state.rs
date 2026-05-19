@@ -61,6 +61,21 @@ pub struct AppState {
     /// `Sender`; per-connection WS tasks (Plan 08) subscribe and forward
     /// to their socket. Capacity is [`WS_BROADCAST_CAPACITY`].
     pub ws_broadcast: broadcast::Sender<WsMessage>,
+    /// CR-02: allowed `Origin` header values for WebSocket upgrades.
+    ///
+    /// Same-origin policy is NOT auto-enforced by the browser on the
+    /// WS handshake — the browser attaches `Origin` but it is the
+    /// server's responsibility to compare and reject mismatches. Without
+    /// this check any web page the operator visits in the same browser
+    /// can `new WebSocket("ws://127.0.0.1:8765/ws")` and subscribe to
+    /// every server-pushed frame (leaking `bootroom.toml` action labels
+    /// + `bytes_b64` payloads) plus inject `Launch` / `Reset` frames.
+    ///
+    /// Populated by `server::run` from the bound `SocketAddr`. An empty
+    /// `Vec` means "deny all" — used by tests that exercise `AppState`
+    /// without going through `server::run` (those tests do not hit
+    /// `ws_handler`).
+    pub allowed_origins: Vec<String>,
 }
 
 impl AppState {
@@ -75,6 +90,7 @@ impl AppState {
         config_path: PathBuf,
         config_path_canon: PathBuf,
         loaded_config: LoadedConfig,
+        allowed_origins: Vec<String>,
     ) -> Self {
         let assets_dir_canon = assets_dir
             .as_ref()
@@ -90,6 +106,7 @@ impl AppState {
             config_path_canon,
             loaded_config: Arc::new(tokio::sync::RwLock::new(loaded_config)),
             ws_broadcast,
+            allowed_origins,
         }
     }
 
@@ -117,6 +134,9 @@ impl AppState {
         let config_path_canon = config_path.clone();
         let loaded_config = LoadedConfig::load_from_str("schema_version = 1\n")
             .expect("trivial schema_version=1 config must parse");
+        // CR-02: tests do not hit `ws_handler` so an empty origin list is
+        // safe (any inbound WS upgrade would be rejected with 403, which
+        // is the correct posture for an unconfigured handler).
         Self::new(
             kernel,
             kernel_canon,
@@ -124,6 +144,7 @@ impl AppState {
             config_path,
             config_path_canon,
             loaded_config,
+            Vec::new(),
         )
     }
 
@@ -153,6 +174,7 @@ impl AppState {
             config_path,
             config_path_canon,
             loaded_config,
+            Vec::new(),
         )
     }
 }

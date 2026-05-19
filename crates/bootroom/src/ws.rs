@@ -25,7 +25,8 @@ use axum::{
         State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    response::IntoResponse,
+    http::{HeaderMap, StatusCode, header::ORIGIN},
+    response::Response,
 };
 use bootroom_core::WsMessage;
 use futures_util::{SinkExt, StreamExt};
@@ -35,11 +36,49 @@ use tokio::sync::{broadcast::error::RecvError, mpsc};
 /// axum extractor entrypoint. Upgrades the connection and hands the
 /// `WebSocket` to `handle_socket`. State extractor is wired so future
 /// phases can inject per-connection logic without changing the route.
+///
+/// # CR-02: same-origin enforcement
+///
+/// Same-origin policy does NOT auto-apply to WebSocket handshakes; the
+/// browser attaches an `Origin` header but enforcement is the server's
+/// responsibility. Without this check any web page the operator visits
+/// in the same browser can `new WebSocket("ws://127.0.0.1:8765/ws")`
+/// and:
+///
+///   * Subscribe to every server-pushed frame (leaking the operator's
+///     `bootroom.toml` action labels + `bytes_b64` payloads).
+///   * Inject `Launch`/`Reset` frames (currently no-op logged but the
+///     Phase 4 hook is already wired).
+///
+/// The `--host 127.0.0.1` loopback bind warning does NOT mitigate this:
+/// loopback stops the network, but NOT in-browser JavaScript on a
+/// malicious page the user has open in the same browser.
+///
+/// Strategy: compare the `Origin` header against `state.allowed_origins`
+/// (populated by `server::run` from the bound address). Reject mismatches
+/// and missing `Origin` with HTTP 403 BEFORE calling `on_upgrade`.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    let origin = headers.get(ORIGIN).and_then(|v| v.to_str().ok());
+    let Some(origin) = origin else {
+        // No `Origin` header. Legitimate browsers always send one on the
+        // WS handshake — log at debug because forged absence is exactly
+        // the same wire shape as an out-of-tree CLI client and we do not
+        // want to spam warn-level logs for those.
+        tracing::debug!("ws upgrade rejected: missing Origin header");
+        return Err(StatusCode::FORBIDDEN);
+    };
+    if !state.allowed_origins.iter().any(|o| o == origin) {
+        tracing::warn!(
+            origin = %origin,
+            "ws upgrade rejected: Origin not in allow-list"
+        );
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, state)))
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {

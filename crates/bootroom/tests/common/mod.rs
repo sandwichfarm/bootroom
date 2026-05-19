@@ -30,10 +30,15 @@ impl Drop for TestServer {
 /// Spawn a bootroom HTTP server on an ephemeral port.
 /// The server runs on the same tokio runtime as the test.
 pub async fn spawn(kernel: PathBuf, assets_dir: Option<PathBuf>) -> TestServer {
-    let state = Arc::new(AppState::new_for_test(kernel, assets_dir));
-    let app = build_router(state);
+    // CR-02: bind FIRST so we know the ephemeral port, then build the
+    // AppState with that port's `http://127.0.0.1:<port>` as an allowed
+    // Origin. This mirrors `server::run`'s post-bind ordering so the WS
+    // integration tests (which connect to `ws://127.0.0.1:<port>/ws`)
+    // pass the Origin gate via tokio-tungstenite's default header.
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind 0");
     let addr = listener.local_addr().expect("local_addr");
+    let state = Arc::new(test_state_with_bound(kernel, assets_dir, addr));
+    let app = build_router(state);
     let handle = tokio::spawn(async move {
         // Ignore the result: when TestServer is dropped we abort the
         // task, which causes axum::serve to return an error that we
@@ -44,6 +49,35 @@ pub async fn spawn(kernel: PathBuf, assets_dir: Option<PathBuf>) -> TestServer {
         base_url: format!("http://{addr}"),
         handle,
     }
+}
+
+/// CR-02: build an `AppState` for tests with the bound socket address
+/// baked into `allowed_origins` so WS upgrades pass the Origin gate.
+/// Equivalent to `AppState::new_for_test` plus a populated origin list.
+fn test_state_with_bound(
+    kernel: PathBuf,
+    assets_dir: Option<PathBuf>,
+    addr: std::net::SocketAddr,
+) -> AppState {
+    use bootroom_core::config::LoadedConfig;
+    let kernel_canon = std::fs::canonicalize(&kernel).unwrap_or_else(|_| kernel.clone());
+    let config_path = PathBuf::from("bootroom.toml");
+    let config_path_canon = config_path.clone();
+    let loaded_config = LoadedConfig::load_from_str("schema_version = 1\n")
+        .expect("trivial schema_version=1 config must parse");
+    let allowed_origins = vec![
+        format!("http://{addr}"),
+        format!("http://localhost:{}", addr.port()),
+    ];
+    AppState::new(
+        kernel,
+        kernel_canon,
+        assets_dir,
+        config_path,
+        config_path_canon,
+        loaded_config,
+        allowed_origins,
+    )
 }
 
 /// Spawn a bootroom HTTP server with an arbitrary `LoadedConfig`.
@@ -57,12 +91,27 @@ pub async fn spawn_with_loaded(
     kernel: PathBuf,
     loaded: bootroom_core::config::LoadedConfig,
 ) -> TestServer {
-    let state = Arc::new(bootroom::AppState::new_for_test_with_loaded(
-        kernel, None, loaded,
-    ));
-    let app = build_router(state);
+    // CR-02: bind first, then build AppState with the bound addr in
+    // `allowed_origins` so WS handshakes pass the Origin gate.
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind 0");
     let addr = listener.local_addr().expect("local_addr");
+    let kernel_canon = std::fs::canonicalize(&kernel).unwrap_or_else(|_| kernel.clone());
+    let config_path = PathBuf::from("bootroom.toml");
+    let config_path_canon = config_path.clone();
+    let allowed_origins = vec![
+        format!("http://{addr}"),
+        format!("http://localhost:{}", addr.port()),
+    ];
+    let state = Arc::new(AppState::new(
+        kernel,
+        kernel_canon,
+        None,
+        config_path,
+        config_path_canon,
+        loaded,
+        allowed_origins,
+    ));
+    let app = build_router(state);
     let handle = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
@@ -84,10 +133,11 @@ pub async fn spawn_with_broadcast_handle(
     kernel: PathBuf,
     assets_dir: Option<PathBuf>,
 ) -> (TestServer, Arc<AppState>) {
-    let state = Arc::new(AppState::new_for_test(kernel, assets_dir));
-    let app = build_router(state.clone());
+    // CR-02: bind first, then populate allowed_origins.
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind 0");
     let addr = listener.local_addr().expect("local_addr");
+    let state = Arc::new(test_state_with_bound(kernel, assets_dir, addr));
+    let app = build_router(state.clone());
     let handle = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
@@ -169,6 +219,11 @@ pub fn spawn_watcher_test_setup() -> (
         config_path.clone(),
         config_path_canon,
         loaded,
+        // CR-02: tests do not exercise `ws_handler`'s Origin gate.
+        // An empty allow-list means any inbound WS upgrade is rejected
+        // with 403, which is the correct posture for an unconfigured
+        // handler.
+        Vec::new(),
     ));
 
     (state, tmp, kernel_path, config_path)

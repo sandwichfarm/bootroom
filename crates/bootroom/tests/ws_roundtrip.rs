@@ -1,6 +1,6 @@
 //! WS-01 + WS-04 server-side integration tests for `/ws`.
 //!
-//! Three tests:
+//! Tests:
 //! 1. `ws_handshake_emits_hello` — server's first frame is
 //!    `Hello { version: CARGO_PKG_VERSION }`.
 //! 2. `ws_client_serial_in_is_logged_not_echoed` — `SerialIn` from the
@@ -9,20 +9,42 @@
 //! 3. `ws_upgrade_response_carries_coop_coep` — Pitfall #4 regression:
 //!    COOP `same-origin` and COEP `require-corp` survive on a GET to
 //!    `/ws` (no Upgrade header).
+//! 4. `ws_handshake_rejects_foreign_origin` — CR-02 regression: a
+//!    handshake carrying `Origin: http://evil.example` is rejected
+//!    with 403 instead of being upgraded.
+//! 5. `ws_handshake_rejects_missing_origin` — CR-02 regression: a
+//!    handshake with no `Origin` header is rejected with 403.
 
 mod common;
 
 use bootroom_core::WsMessage;
 use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{
+    Message,
+    client::IntoClientRequest,
+    http::header::ORIGIN,
+};
+
+/// CR-02 helper: build a `ws://` upgrade request that carries an
+/// `Origin: http://<host>:<port>` header derived from `base_url` so the
+/// server-side origin gate accepts the handshake.
+fn ws_request(base_url: &str) -> tokio_tungstenite::tungstenite::handshake::client::Request {
+    let ws_url = base_url.replace("http://", "ws://") + "/ws";
+    let origin = base_url.to_owned();
+    let mut req = ws_url.into_client_request().expect("build WS request");
+    req.headers_mut().insert(
+        ORIGIN,
+        origin.parse().expect("origin parses as HeaderValue"),
+    );
+    req
+}
 
 #[tokio::test]
 async fn ws_handshake_emits_hello() {
     let kernel = common::write_kernel_tempfile(b"fake-kernel");
     let server = common::spawn(kernel.path().to_path_buf(), None).await;
-    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
 
-    let (mut socket, _resp) = tokio_tungstenite::connect_async(&ws_url)
+    let (mut socket, _resp) = tokio_tungstenite::connect_async(ws_request(&server.base_url))
         .await
         .expect("ws connect");
 
@@ -55,9 +77,8 @@ async fn ws_handshake_emits_hello() {
 async fn ws_client_serial_in_is_logged_not_echoed() {
     let kernel = common::write_kernel_tempfile(b"fake-kernel");
     let server = common::spawn(kernel.path().to_path_buf(), None).await;
-    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
 
-    let (mut socket, _resp) = tokio_tungstenite::connect_async(&ws_url)
+    let (mut socket, _resp) = tokio_tungstenite::connect_async(ws_request(&server.base_url))
         .await
         .expect("ws connect");
 
@@ -117,5 +138,60 @@ async fn ws_upgrade_response_carries_coop_coep() {
             .map(|v| v.to_str().unwrap()),
         Some("require-corp"),
         "COEP missing on /ws non-upgrade GET"
+    );
+}
+
+/// CR-02 regression: a cross-origin WS handshake (browser tab on a
+/// different origin attempts to attach to bootroom's loopback `/ws`)
+/// must be rejected with 403 instead of being upgraded. Without this
+/// gate, any web page the operator visits in the same browser can
+/// subscribe to every server-pushed frame and inject Launch/Reset.
+#[tokio::test]
+async fn ws_handshake_rejects_foreign_origin() {
+    let kernel = common::write_kernel_tempfile(b"fake-kernel");
+    let server = common::spawn(kernel.path().to_path_buf(), None).await;
+
+    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
+    let mut req = ws_url
+        .into_client_request()
+        .expect("build WS request");
+    req.headers_mut().insert(
+        ORIGIN,
+        "http://evil.example".parse().expect("origin header"),
+    );
+
+    let err = tokio_tungstenite::connect_async(req)
+        .await
+        .expect_err("foreign-origin WS upgrade must be rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("403"),
+        "expected HTTP 403 in tungstenite error, got: {msg}"
+    );
+}
+
+/// CR-02 regression: a handshake with no `Origin` header at all must
+/// be rejected with 403. Legitimate browsers always send `Origin` on
+/// WS handshakes; absence is either a forged non-browser client or a
+/// misconfigured tool, and accepting it would defeat the foreign-
+/// origin check (an attacker could just strip the header).
+#[tokio::test]
+async fn ws_handshake_rejects_missing_origin() {
+    let kernel = common::write_kernel_tempfile(b"fake-kernel");
+    let server = common::spawn(kernel.path().to_path_buf(), None).await;
+
+    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
+    // `into_client_request` produces a request with NO `Origin` header
+    // by default (tokio-tungstenite only adds `Sec-WebSocket-*`
+    // handshake headers automatically). Leave the request untouched.
+    let req = ws_url.into_client_request().expect("build WS request");
+
+    let err = tokio_tungstenite::connect_async(req)
+        .await
+        .expect_err("missing-origin WS upgrade must be rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("403"),
+        "expected HTTP 403 in tungstenite error, got: {msg}"
     );
 }

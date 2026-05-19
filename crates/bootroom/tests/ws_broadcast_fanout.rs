@@ -28,16 +28,34 @@ use bootroom_core::WsMessage;
 use futures_util::StreamExt;
 use std::time::Duration;
 use tokio::time::timeout;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{
+    Message,
+    client::IntoClientRequest,
+    http::header::ORIGIN,
+};
+
+/// CR-02: build a `ws://` upgrade request carrying an `Origin` header
+/// derived from the test server's `base_url`, so the server-side origin
+/// gate accepts the handshake.
+fn ws_request(base_url: &str) -> tokio_tungstenite::tungstenite::handshake::client::Request {
+    let ws_url = base_url.replace("http://", "ws://") + "/ws";
+    let origin = base_url.to_owned();
+    let mut req = ws_url.into_client_request().expect("build WS request");
+    req.headers_mut().insert(
+        ORIGIN,
+        origin.parse().expect("origin parses as HeaderValue"),
+    );
+    req
+}
 
 /// Open a WS client and consume the initial `Hello` frame so subsequent
 /// reads start at the first server-pushed payload. Returns the live socket.
 async fn connect_and_swallow_hello(
-    ws_url: &str,
+    base_url: &str,
 ) -> tokio_tungstenite::WebSocketStream<
     tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
 > {
-    let (mut socket, _resp) = tokio_tungstenite::connect_async(ws_url)
+    let (mut socket, _resp) = tokio_tungstenite::connect_async(ws_request(base_url))
         .await
         .expect("ws connect");
     let hello = timeout(Duration::from_secs(2), socket.next())
@@ -85,9 +103,7 @@ async fn single_client_receives_kernel_changed() {
     let kernel = common::write_kernel_tempfile(b"fake-kernel");
     let (server, state) =
         common::spawn_with_broadcast_handle(kernel.path().to_path_buf(), None).await;
-    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
-
-    let mut socket = connect_and_swallow_hello(&ws_url).await;
+    let mut socket = connect_and_swallow_hello(&server.base_url).await;
 
     // Give the broadcast forwarder a brief moment to actually subscribe()
     // before we publish. (handle_socket calls .subscribe() synchronously
@@ -134,10 +150,8 @@ async fn two_clients_both_receive_one_send() {
     let kernel = common::write_kernel_tempfile(b"fake-kernel");
     let (server, state) =
         common::spawn_with_broadcast_handle(kernel.path().to_path_buf(), None).await;
-    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
-
-    let mut a = connect_and_swallow_hello(&ws_url).await;
-    let mut b = connect_and_swallow_hello(&ws_url).await;
+    let mut a = connect_and_swallow_hello(&server.base_url).await;
+    let mut b = connect_and_swallow_hello(&server.base_url).await;
 
     tokio::time::sleep(Duration::from_millis(20)).await;
 
@@ -173,8 +187,6 @@ async fn client_misses_broadcasts_before_connect() {
     let kernel = common::write_kernel_tempfile(b"fake-kernel");
     let (server, state) =
         common::spawn_with_broadcast_handle(kernel.path().to_path_buf(), None).await;
-    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
-
     // Broadcast with no subscribers: should return Err (no receivers),
     // confirming the message is dropped (not buffered).
     let send_result = state.ws_broadcast.send(WsMessage::KernelChanged {
@@ -192,7 +204,7 @@ async fn client_misses_broadcasts_before_connect() {
 
     // Now connect; the client should ONLY see Hello, never the prior
     // KernelChanged frame.
-    let mut socket = connect_and_swallow_hello(&ws_url).await;
+    let mut socket = connect_and_swallow_hello(&server.base_url).await;
 
     // Wait briefly to confirm no late delivery arrives.
     let next = timeout(Duration::from_millis(300), socket.next()).await;
@@ -207,9 +219,7 @@ async fn config_invalid_frame_round_trips() {
     let kernel = common::write_kernel_tempfile(b"fake-kernel");
     let (server, state) =
         common::spawn_with_broadcast_handle(kernel.path().to_path_buf(), None).await;
-    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
-
-    let mut socket = connect_and_swallow_hello(&ws_url).await;
+    let mut socket = connect_and_swallow_hello(&server.base_url).await;
     tokio::time::sleep(Duration::from_millis(20)).await;
 
     let frame = WsMessage::ConfigInvalid {
@@ -243,9 +253,7 @@ async fn lagged_receiver_logged_and_continues() {
     let kernel = common::write_kernel_tempfile(b"fake-kernel");
     let (server, state) =
         common::spawn_with_broadcast_handle(kernel.path().to_path_buf(), None).await;
-    let ws_url = server.base_url.replace("http://", "ws://") + "/ws";
-
-    let mut socket = connect_and_swallow_hello(&ws_url).await;
+    let mut socket = connect_and_swallow_hello(&server.base_url).await;
     tokio::time::sleep(Duration::from_millis(20)).await;
 
     // 20-frame burst of KernelChanged. The broadcast channel itself has

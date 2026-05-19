@@ -83,25 +83,6 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     let config_path_canon = std::fs::canonicalize(&config_path)
         .with_context(|| format!("--config canonicalize: {}", config_path.display()))?;
 
-    let state = Arc::new(AppState::new(
-        args.kernel.clone(),
-        kernel_canon,
-        args.assets_dir.clone(),
-        config_path,
-        config_path_canon,
-        loaded,
-    ));
-
-    // Plan 03-06: spawn the filesystem watcher BEFORE bind so the OS thread
-    // is live for the entire serving lifetime. Failure to start the watcher
-    // (e.g. .watch() returns Err because the kernel parent dir is not
-    // readable) is fatal — the operator wants the diagnostic up front,
-    // not a silent loss of live-reload after the listener is already bound.
-    crate::watcher::spawn_watcher(state.clone())
-        .context("watcher init failed")?;
-
-    let app = build_router(state);
-
     // Parse host as IpAddr first so IPv6 literals like `::1` work — naive
     // `"{host}:{port}"` concatenation produces ambiguous strings such as
     // `::1:8765` which SocketAddr cannot reliably round-trip (CR-01).
@@ -124,6 +105,55 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         .await
         .with_context(|| format!("failed to bind {addr}"))?;
     let bound = listener.local_addr()?;
+
+    // CR-02: derive the allowed WS `Origin` set from the bound address.
+    // The browser attaches `Origin: http://<host>:<port>` on the WS
+    // handshake, but enforcement is the server's job — same-origin
+    // policy does NOT auto-apply to WS upgrades. We allow:
+    //
+    //   * `http://<bound>` — matches the URL the harness page was served
+    //     from when bind addr matches the visible URL (typical case).
+    //   * `http://localhost:<port>` — when bound on loopback, the
+    //     browser may emit `127.0.0.1`, `[::1]`, or `localhost` for
+    //     `Origin` depending on how the user typed the URL. The
+    //     `--no-open` auto-open path emits `http://{bound}` exactly,
+    //     so this `localhost` alias is the conventional friendly form
+    //     for hand-typed URLs.
+    //
+    // Deliberately NOT included:
+    //   * `null` — `file://` origins serialize as `null`. Local HTML
+    //     files attempting to attach to bootroom's WS are rejected.
+    //   * `https://` variants — bootroom serves plain HTTP only.
+    //
+    // An absent `Origin` header is also rejected; legitimate browsers
+    // always send `Origin` on WS handshakes (non-browser clients can
+    // forge it, which is acceptable — the threat model here is a
+    // malicious *web page* that the operator's browser visits, not an
+    // attacker with arbitrary HTTP-client access to the loopback port).
+    let mut allowed_origins = vec![format!("http://{bound}")];
+    if is_loopback(&bound.ip()) {
+        allowed_origins.push(format!("http://localhost:{}", bound.port()));
+    }
+
+    let state = Arc::new(AppState::new(
+        args.kernel.clone(),
+        kernel_canon,
+        args.assets_dir.clone(),
+        config_path,
+        config_path_canon,
+        loaded,
+        allowed_origins,
+    ));
+
+    // Plan 03-06: spawn the filesystem watcher AFTER bind. Failure to
+    // start the watcher (e.g. .watch() returns Err because the kernel
+    // parent dir is not readable) is still fatal — but the OS thread it
+    // owns lives for the rest of the process lifetime regardless of
+    // whether we bind before or after.
+    crate::watcher::spawn_watcher(state.clone())
+        .context("watcher init failed")?;
+
+    let app = build_router(state);
 
     // CONTEXT.md D-04: exact startup line.
     println!("Serving bootroom on http://{bound} (Ctrl-C to stop)");
