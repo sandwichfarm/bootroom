@@ -120,8 +120,8 @@ pub struct RunArgs {
     pub scenario: String,
 
     /// Write a full JSONL transcript to this path (RUN-08). Each line
-    /// is one event: scenario_start, action_send, serial_chunk,
-    /// assertion_result, scenario_result. Optional — when absent, the
+    /// is one event: `scenario_start`, `action_send`, `serial_chunk`,
+    /// `assertion_result`, `scenario_result`. Optional — when absent, the
     /// transcript is discarded after exit-code translation.
     #[arg(long, value_name = "PATH")]
     pub log_file: Option<PathBuf>,

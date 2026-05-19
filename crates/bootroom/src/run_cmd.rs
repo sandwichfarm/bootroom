@@ -19,6 +19,10 @@ use std::process::ExitCode;
 /// COI self-check, oneshot await, transcript persistence, exit-code
 /// translation. See
 /// `.planning/phases/04-scenario-engine-headless-run/04-07-PLAN.md`.
+///
+/// The `async` is intentional — 04-07 awaits chromiumoxide; pinning the
+/// signature now lets 04-04..06 build against the final shape.
+#[allow(clippy::unused_async)]
 pub async fn run(args: RunArgs) -> ExitCode {
     let _ = args; // Pin the signature for 04-07.
     eprintln!(
