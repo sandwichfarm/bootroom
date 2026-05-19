@@ -38,13 +38,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 /// parse, the listener cannot bind, or the axum runtime exits abnormally.
 pub async fn run(args: ServeArgs) -> Result<()> {
     // V5: validate --kernel at startup (per 01-RESEARCH.md open question 3).
-    if !args.kernel.exists() {
-        anyhow::bail!("--kernel: file not found at {}", args.kernel.display());
+    if !args.common.kernel.exists() {
+        anyhow::bail!(
+            "--kernel: file not found at {}",
+            args.common.kernel.display()
+        );
     }
-    if !args.kernel.is_file() {
+    if !args.common.kernel.is_file() {
         anyhow::bail!(
             "--kernel: path is not a regular file: {}",
-            args.kernel.display()
+            args.common.kernel.display()
         );
     }
 
@@ -54,6 +57,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     // connect (CONTEXT decision "Config live-reload": initial-load failure
     // is FATAL; only post-startup reloads emit a deferred ConfigInvalid).
     let config_path = args
+        .common
         .config
         .clone()
         .unwrap_or_else(|| PathBuf::from("bootroom.toml"));
@@ -78,8 +82,8 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     // startup so the watcher (Plan 06) can compare notify events against
     // absolute paths. Without this, a relative `--kernel ./Image` would
     // silently miss its own rebuild events.
-    let kernel_canon = std::fs::canonicalize(&args.kernel)
-        .with_context(|| format!("--kernel canonicalize: {}", args.kernel.display()))?;
+    let kernel_canon = std::fs::canonicalize(&args.common.kernel)
+        .with_context(|| format!("--kernel canonicalize: {}", args.common.kernel.display()))?;
     let config_path_canon = std::fs::canonicalize(&config_path)
         .with_context(|| format!("--config canonicalize: {}", config_path.display()))?;
 
@@ -147,7 +151,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     }
 
     let state = Arc::new(AppState::new(
-        args.kernel.clone(),
+        args.common.kernel.clone(),
         kernel_canon,
         args.assets_dir.clone(),
         config_path,
@@ -313,12 +317,15 @@ mod tests {
         cfg.write_all(b"schema_version = 99\n").expect("write");
 
         let args = crate::cli::ServeArgs {
-            kernel: kernel.path().to_path_buf(),
+            common: crate::cli::CommonArgs {
+                kernel: kernel.path().to_path_buf(),
+                config: Some(cfg.path().to_path_buf()),
+                verbose: false,
+            },
             host: "127.0.0.1".into(),
             port: 0,
             assets_dir: None,
             no_open: true,
-            config: Some(cfg.path().to_path_buf()),
             actions: vec![],
         };
 
@@ -354,14 +361,17 @@ mod tests {
         cfg.write_all(b"schema_version = 1\n").expect("write cfg");
 
         let args = crate::cli::ServeArgs {
-            kernel: kernel.path().to_path_buf(),
+            common: crate::cli::CommonArgs {
+                kernel: kernel.path().to_path_buf(),
+                config: Some(cfg.path().to_path_buf()),
+                verbose: false,
+            },
             host: "127.0.0.1".into(),
             port: 0,
             assets_dir: Some(PathBuf::from(
                 "/does/not/exist/bootroom-assets-test-WR08",
             )),
             no_open: true,
-            config: Some(cfg.path().to_path_buf()),
             actions: vec![],
         };
 
@@ -392,12 +402,15 @@ mod tests {
         cfg.write_all(b"schema_version = 1\n").expect("write");
 
         let args = crate::cli::ServeArgs {
-            kernel: PathBuf::from("/does/not/exist/at/all-bootroom-test"),
+            common: crate::cli::CommonArgs {
+                kernel: PathBuf::from("/does/not/exist/at/all-bootroom-test"),
+                config: Some(cfg.path().to_path_buf()),
+                verbose: false,
+            },
             host: "127.0.0.1".into(),
             port: 0,
             assets_dir: None,
             no_open: true,
-            config: Some(cfg.path().to_path_buf()),
             actions: vec![],
         };
 
