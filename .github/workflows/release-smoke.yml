@@ -53,9 +53,24 @@ jobs:
       # contents inside the Docker container, simulating the publish-then-
       # install round trip without actually touching crates.io.
       - name: cargo package (bootroom-core + bootroom)
+        # WR-05: removed --no-verify so this step exercises the in-package
+        # `cargo build` verify path. That is the only place that catches a
+        # missing workspace-dep `version = ...` (the regression class
+        # CR-01 exposed) after Cargo rewrites the dep on publish. We do
+        # NOT pass --allow-dirty: tag-triggered runs have a clean tree,
+        # and manual-dispatch runs against a dirty tree should fail loudly
+        # so the smoke matches what gets published.
+        #
+        # Caveat: `cargo package -p bootroom` (verify step) will fail
+        # until bootroom-core is published to crates.io for the first
+        # time, because the packaged tarball strips the path-dep and
+        # the verify build only sees the `version =` requirement. The
+        # first publish of bootroom-core must therefore be done manually
+        # (or via a future publish-job) before the gated bootroom tag
+        # push can succeed. See WR-01 in the phase 06 review.
         run: |
-          cargo package -p bootroom-core --allow-dirty --no-verify
-          cargo package -p bootroom --allow-dirty --no-verify
+          cargo package -p bootroom-core
+          cargo package -p bootroom
           ls -la target/package/
 
       # Run the install + doctor smoke inside a clean rust:1.85 container.
@@ -69,21 +84,29 @@ jobs:
       # not via filesystem-relative lookups.
       - name: Install + doctor smoke (Docker, v*.*.* gate)
         run: |
+          # Resolve the bootroom version from the workspace manifest so the
+          # extraction and --path are pinned literally (CR-02): the glob
+          # `bootroom-*` matched both `bootroom-<ver>/` and
+          # `bootroom-core-<ver>/`, causing `cargo install --path` to
+          # receive two arguments.
+          BOOTROOM_VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "bootroom") | .version')
+          echo "Pinned bootroom version: ${BOOTROOM_VERSION}"
           docker run --rm \
             -v "$PWD:/workspace:ro" \
             -w /tmp \
+            -e BOOTROOM_VERSION="${BOOTROOM_VERSION}" \
             rust:1.85-alpine \
             sh -euxc '
               apk add --no-cache musl-dev gcc git
               mkdir -p /work
               # bootroom-core comes first (bootroom depends on it).
-              tar -xzf /workspace/target/package/bootroom-core-*.crate -C /work
-              tar -xzf /workspace/target/package/bootroom-*.crate -C /work
+              tar -xzf "/workspace/target/package/bootroom-core-${BOOTROOM_VERSION}.crate" -C /work
+              tar -xzf "/workspace/target/package/bootroom-${BOOTROOM_VERSION}.crate" -C /work
               # cargo install resolves the bootroom-core path-dep via the
               # extracted sibling directory automatically (Cargo features
               # path-overrides at install time when --path is used).
-              cargo install --locked --path /work/bootroom-* --root /usr/local
-              cd /tmp
+              cargo install --locked --path "/work/bootroom-${BOOTROOM_VERSION}" --root /usr/local
               bootroom --version
               JSON=$(bootroom doctor --format json)
               echo "doctor JSON: $JSON"
@@ -95,16 +118,20 @@ jobs:
       # regressions the inline shell-script smoke doesn't.
       - name: Install + install_smoke integration tests
         run: |
+          BOOTROOM_VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "bootroom") | .version')
+          echo "Pinned bootroom version: ${BOOTROOM_VERSION}"
           docker run --rm \
             -v "$PWD:/workspace:ro" \
             -w /tmp \
+            -e BOOTROOM_VERSION="${BOOTROOM_VERSION}" \
             rust:1.85-alpine \
             sh -euxc '
               apk add --no-cache musl-dev gcc git
               mkdir -p /work
-              tar -xzf /workspace/target/package/bootroom-core-*.crate -C /work
-              tar -xzf /workspace/target/package/bootroom-*.crate -C /work
-              cargo install --locked --path /work/bootroom-* --root /usr/local
+              tar -xzf "/workspace/target/package/bootroom-core-${BOOTROOM_VERSION}.crate" -C /work
+              tar -xzf "/workspace/target/package/bootroom-${BOOTROOM_VERSION}.crate" -C /work
+              cargo install --locked --path "/work/bootroom-${BOOTROOM_VERSION}" --root /usr/local
               cd /workspace
               BOOTROOM_INSTALL_SMOKE_BIN=/usr/local/bin/bootroom \
                 cargo test --test install_smoke -p bootroom -- --ignored --nocapture
@@ -123,16 +150,20 @@ jobs:
       # directly references the requirement ID.
       - name: DIST-05 path-independence check
         run: |
+          BOOTROOM_VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "bootroom") | .version')
+          echo "Pinned bootroom version: ${BOOTROOM_VERSION}"
           docker run --rm \
             -v "$PWD:/workspace:ro" \
             -w /tmp \
+            -e BOOTROOM_VERSION="${BOOTROOM_VERSION}" \
             rust:1.85-alpine \
             sh -euxc '
               apk add --no-cache musl-dev gcc git
               mkdir -p /work
-              tar -xzf /workspace/target/package/bootroom-core-*.crate -C /work
-              tar -xzf /workspace/target/package/bootroom-*.crate -C /work
-              cargo install --locked --path /work/bootroom-* --root /usr/local
+              tar -xzf "/workspace/target/package/bootroom-core-${BOOTROOM_VERSION}.crate" -C /work
+              tar -xzf "/workspace/target/package/bootroom-${BOOTROOM_VERSION}.crate" -C /work
+              cargo install --locked --path "/work/bootroom-${BOOTROOM_VERSION}" --root /usr/local
               cd /workspace
               BOOTROOM_INSTALL_SMOKE_BIN=/usr/local/bin/bootroom \
                 cargo test --test install_smoke -p bootroom \
