@@ -4,6 +4,8 @@ A web-based test harness for RISC-V kernels (and any qemu-wasm guest).
 Press one button, get the freshest kernel running in a browser with a
 click-to-trigger scenario library.
 
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+
 > Note: the working directory on this development host is still
 > `~/Develop/norn-web` from the project's earlier name; the workspace,
 > binary, and crates are all named `bootroom`. The directory may be
