@@ -64,6 +64,9 @@ qemu-assets:
 	docker cp $(QEMU_BUILDER):/build/qemu-system-riscv64.data $(QEMU_OUT_DIR)/qemu-system-riscv64.data
 	docker cp $(QEMU_BUILDER):/build/load.js $(QEMU_OUT_DIR)/load.js
 	-docker rm -f $(QEMU_BUILDER) >/dev/null 2>&1
+	@echo ">>> Step 5b/5: Recording qemu-wasm git rev..."
+	@git -C $(QEMU_WASM_DIR) rev-parse --short HEAD > $(QEMU_OUT_DIR)/qemu-wasm-rev.txt
+	@echo "  qemu-wasm rev: $$(cat $(QEMU_OUT_DIR)/qemu-wasm-rev.txt)"
 	@echo ">>> Done. Artifacts copied to $(QEMU_OUT_DIR)."
 	@echo ">>> NOTE: module.js is bootroom-authored (NOT overwritten). Edit it manually if you change QEMU argv."
 	@echo ">>> Remember to 'git add $(QEMU_OUT_DIR)' and commit."
@@ -73,5 +76,6 @@ clean-qemu-assets:
 	      $(QEMU_OUT_DIR)/qemu-system-riscv64.wasm \
 	      $(QEMU_OUT_DIR)/qemu-system-riscv64.worker.js \
 	      $(QEMU_OUT_DIR)/qemu-system-riscv64.data \
-	      $(QEMU_OUT_DIR)/load.js
+	      $(QEMU_OUT_DIR)/load.js \
+	      $(QEMU_OUT_DIR)/qemu-wasm-rev.txt
 	@echo "Cleaned generated qemu artifacts. module.js and REBUILD.md preserved."
