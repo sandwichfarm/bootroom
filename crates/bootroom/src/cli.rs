@@ -264,6 +264,10 @@ mod tests {
         // their flag names, types, and defaults; the new --config /
         // --action flags default to None / empty so existing Phase-2
         // invocations parse unchanged.
+        //
+        // Plan 04-03: `--kernel` / `--config` migrated into the flattened
+        // `CommonArgs`. The PARSING INPUTS are intentionally unchanged
+        // (Pitfall #9) — only field-access paths shift to `args.common.*`.
         let cli = Cli::try_parse_from([
             "bootroom",
             "serve",
@@ -279,12 +283,197 @@ mod tests {
         let Cmd::Serve(args) = cli.cmd else {
             panic!("expected Cmd::Serve, got {:?}", cli.cmd);
         };
-        assert_eq!(args.kernel, std::path::PathBuf::from("/tmp/x"));
+        assert_eq!(args.common.kernel, std::path::PathBuf::from("/tmp/x"));
         assert_eq!(args.host, "::1");
         assert_eq!(args.port, 9999);
         assert!(args.no_open);
         assert!(args.assets_dir.is_none());
-        assert!(args.config.is_none());
+        assert!(args.common.config.is_none());
         assert!(args.actions.is_empty());
+    }
+
+    // ----- Plan 04-03 tests: CommonArgs flatten + Cmd::Run(RunArgs) -----
+
+    #[test]
+    fn cli_parses_run_minimal() {
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "run",
+            "--kernel",
+            "/tmp/Image",
+            "--scenario",
+            "boot_smoke",
+        ])
+        .expect("parses");
+        let Cmd::Run(args) = cli.cmd else {
+            panic!("expected Cmd::Run, got {:?}", cli.cmd);
+        };
+        assert_eq!(args.common.kernel, std::path::PathBuf::from("/tmp/Image"));
+        assert_eq!(args.scenario, "boot_smoke");
+        assert!(args.common.config.is_none());
+        assert!(!args.common.verbose);
+        assert!(args.log_file.is_none());
+    }
+
+    #[test]
+    fn cli_parses_run_all_flags() {
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "run",
+            "--kernel",
+            "/tmp/Image",
+            "--scenario",
+            "boot_smoke",
+            "--config",
+            "/tmp/b.toml",
+            "--verbose",
+            "--log-file",
+            "/tmp/log.jsonl",
+        ])
+        .expect("parses");
+        let Cmd::Run(args) = cli.cmd else {
+            panic!("expected Cmd::Run, got {:?}", cli.cmd);
+        };
+        assert_eq!(args.common.kernel, std::path::PathBuf::from("/tmp/Image"));
+        assert_eq!(args.scenario, "boot_smoke");
+        assert_eq!(
+            args.common.config.as_deref(),
+            Some(std::path::Path::new("/tmp/b.toml"))
+        );
+        assert!(args.common.verbose);
+        assert_eq!(
+            args.log_file.as_deref(),
+            Some(std::path::Path::new("/tmp/log.jsonl"))
+        );
+    }
+
+    #[test]
+    fn cli_parses_run_short_v() {
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "run",
+            "--kernel",
+            "/tmp/x",
+            "--scenario",
+            "boot_smoke",
+            "-v",
+        ])
+        .expect("parses");
+        let Cmd::Run(args) = cli.cmd else {
+            panic!("expected Cmd::Run, got {:?}", cli.cmd);
+        };
+        assert!(args.common.verbose);
+    }
+
+    #[test]
+    fn cli_run_requires_scenario() {
+        let err = Cli::try_parse_from(["bootroom", "run", "--kernel", "/tmp/x"])
+            .expect_err("missing --scenario must fail");
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("scenario"),
+            "error must mention `scenario`; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn cli_run_requires_kernel() {
+        let err = Cli::try_parse_from([
+            "bootroom",
+            "run",
+            "--scenario",
+            "boot_smoke",
+        ])
+        .expect_err("missing --kernel must fail");
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("kernel"),
+            "error must mention `kernel`; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn cli_serve_args_phase3_compat_via_flatten() {
+        // Phase 3 compat pin — exercises the flatten on `ServeArgs`. Field
+        // renames inside `CommonArgs` are caught here.
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "serve",
+            "--kernel",
+            "/tmp/x",
+            "--host",
+            "::1",
+            "--port",
+            "9999",
+            "--no-open",
+            "--config",
+            "/tmp/b.toml",
+        ])
+        .expect("parses");
+        let Cmd::Serve(args) = cli.cmd else {
+            panic!("expected Cmd::Serve, got {:?}", cli.cmd);
+        };
+        assert_eq!(args.common.kernel, std::path::PathBuf::from("/tmp/x"));
+        assert_eq!(args.host, "::1");
+        assert_eq!(args.port, 9999);
+        assert!(args.no_open);
+        assert_eq!(
+            args.common.config.as_deref(),
+            Some(std::path::Path::new("/tmp/b.toml"))
+        );
+        assert!(!args.common.verbose);
+        assert!(args.assets_dir.is_none());
+        assert!(args.actions.is_empty());
+    }
+
+    #[test]
+    fn cli_serve_short_v_sets_verbose() {
+        let cli = Cli::try_parse_from([
+            "bootroom",
+            "serve",
+            "--kernel",
+            "/tmp/x",
+            "--no-open",
+            "-v",
+        ])
+        .expect("parses");
+        let Cmd::Serve(args) = cli.cmd else {
+            panic!("expected Cmd::Serve, got {:?}", cli.cmd);
+        };
+        assert!(args.common.verbose);
+    }
+
+    #[test]
+    fn cli_help_lists_shared_flags_on_run() {
+        use clap::CommandFactory;
+        let help = Cli::command().render_long_help().to_string();
+        for needle in ["--kernel", "--config", "--verbose", "--scenario", "--log-file"] {
+            assert!(
+                help.contains(needle),
+                "Cli long help must mention `{needle}`; got:\n{help}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_parses_run_with_repeated_actions_unsupported() {
+        // Sanity pin: `--action` lives on ServeArgs, NOT CommonArgs. A
+        // `--action` passed to `run` must error (unknown argument).
+        let err = Cli::try_parse_from([
+            "bootroom",
+            "run",
+            "--kernel",
+            "/tmp/x",
+            "--scenario",
+            "boot_smoke",
+            "--action",
+            "reboot=reboot\\r",
+        ])
+        .expect_err("`--action` is serve-only");
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("action") || msg.contains("unexpected") || msg.contains("unrecognized"),
+            "error must surface the unknown --action arg; got: {msg}"
+        );
     }
 }
