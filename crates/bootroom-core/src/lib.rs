@@ -8,6 +8,9 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod escape;
+pub use escape::{decode_bytes_escape, EscapeError};
+
 /// Wire-level message exchanged over the `/ws` endpoint.
 ///
 /// Externally tagged via `#[serde(tag = "type")]`, producing JSON of the form
