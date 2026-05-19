@@ -68,4 +68,28 @@ fn main() {
             std::process::exit(1);
         }
     }
+
+    // Plan 05-01: capture `git rev-parse --short HEAD` into BOOTROOM_GIT_SHA
+    // so the runtime `doctor` check (plan 05-04) can read it via env!().
+    // Must be captured at build time because `cargo install bootroom` from
+    // crates.io ships without `.git/` — a runtime `git rev-parse` would
+    // fail. The chain below tolerates: (a) git not on PATH, (b) git
+    // running but no repo, (c) detached/missing HEAD. None of these may
+    // panic or abort the build (D-DOC-04 + Research Pattern 3). Never
+    // `.unwrap()` on the git invocation.
+    let sha = std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=BOOTROOM_GIT_SHA={sha}");
+    // Invalidate on commit / checkout (HEAD moves) and on branch updates
+    // (refs/ subtree changes). Together these cover the cases where the
+    // captured SHA would otherwise go stale across a rebuild.
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs");
 }
