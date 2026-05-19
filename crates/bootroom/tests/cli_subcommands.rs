@@ -142,3 +142,102 @@ fn top_level_help_lists_run_subcommand() {
         );
     }
 }
+
+// ----- Plan 05-06 addition: pin the EXACT five-subcommand surface -----
+//
+// CLI-01 contract: `bootroom --help` lists exactly five user-facing
+// subcommands in the documented order (serve, run, check, init,
+// doctor). The auto-added `help` is the only allowed sixth entry.
+//
+// This single test catches three regression classes at once:
+// - Subcommand deletion          (a known name disappears)
+// - Subcommand rename            (a known name vanishes; surprise name appears)
+// - Subcommand surprise addition (e.g. a cfg-gated `dev` slips in)
+//
+// Implementation note: we don't position-anchor against clap's exact
+// indentation (clap is allowed to retune its formatter between minor
+// releases). Instead we parse the "Commands:" block, split off the
+// first whitespace-delimited token from each indented line, and
+// compare against the documented order.
+
+#[test]
+fn top_level_help_lists_exactly_five_subcommands() {
+    let out = Command::new(bin())
+        .arg("--help")
+        .output()
+        .expect("run bootroom --help");
+    assert!(out.status.success(), "--help should exit 0, got {:?}", out.status);
+    let help = String::from_utf8_lossy(&out.stdout);
+
+    // Extract the "Commands:" block: the lines between "Commands:" and
+    // the next blank line. Clap renders each row as
+    //   "  <name>  <about>"
+    // — two leading spaces, name, then more whitespace, then the
+    // about-text. We split on whitespace and take the first token.
+    let cmd_block: Vec<&str> = help
+        .lines()
+        .skip_while(|l| !l.trim_start().starts_with("Commands:"))
+        .skip(1) // skip the "Commands:" header line itself
+        .take_while(|l| !l.trim().is_empty())
+        .collect();
+    assert!(
+        !cmd_block.is_empty(),
+        "could not find a `Commands:` block in --help output. Full output:\n{help}"
+    );
+
+    let mut listed: Vec<String> = Vec::new();
+    for line in &cmd_block {
+        // Skip continuation lines (clap wraps long abouts onto extra
+        // lines that are indented further than the name column).
+        // A real command row starts with exactly two spaces; a
+        // continuation line starts with many more.
+        if !line.starts_with("  ") {
+            continue;
+        }
+        // Some clap versions indent continuation rows with >2 spaces
+        // but not all do — guard by requiring the first token to look
+        // like a command name (lowercase alpha, length ≥ 2).
+        let token = line.split_whitespace().next().unwrap_or("");
+        if token.len() >= 2 && token.chars().all(|c| c.is_ascii_lowercase()) {
+            listed.push(token.to_string());
+        }
+    }
+
+    let expected = ["serve", "run", "check", "init", "doctor"];
+
+    // Forward pin: every documented subcommand appears in order.
+    let mut positions: Vec<usize> = Vec::with_capacity(expected.len());
+    for name in expected {
+        let idx = listed.iter().position(|n| n == name).unwrap_or_else(|| {
+            panic!(
+                "documented subcommand `{name}` missing from --help.\n\
+                 Listed commands: {listed:?}\n\
+                 Full --help:\n{help}"
+            )
+        });
+        positions.push(idx);
+    }
+    let mut sorted = positions.clone();
+    sorted.sort_unstable();
+    assert_eq!(
+        positions, sorted,
+        "subcommands appear out of order. Expected serve < run < check < init < doctor.\n\
+         Found positions {positions:?} for {expected:?} in listed {listed:?}"
+    );
+
+    // Inverse pin: every listed name must be one of the five known
+    // subcommands plus clap's auto-added `help`. A surprise sixth
+    // command (e.g. accidentally cfg-gated `dev` or `bench`) fires CI.
+    let known: std::collections::HashSet<&str> =
+        ["serve", "run", "check", "init", "doctor", "help"]
+            .into_iter()
+            .collect();
+    for name in &listed {
+        assert!(
+            known.contains(name.as_str()),
+            "surprise subcommand `{name}` appeared in --help — it is not part of the \
+             CLI-01 contract (serve, run, check, init, doctor + clap's auto `help`). \
+             Either add it to the documented surface or remove it. Listed: {listed:?}"
+        );
+    }
+}

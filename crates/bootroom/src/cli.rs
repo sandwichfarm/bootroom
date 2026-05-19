@@ -32,9 +32,11 @@ pub enum Cmd {
     /// Phase-2 subprocess test invocation shape (Pitfall #9 mitigation).
     Serve(ServeArgs),
 
-    /// Run a scenario headlessly under Chromium and exit with a CI-style
-    /// status code (RUN-01..10). Plan 04-07 fills in the driver body;
-    /// Plan 04-03 lands the surface so 04-04..06 build cleanly.
+    /// Run a scenario headlessly under Chromium and exit 0/1 on serial assertions.
+    ///
+    /// Returns a CI-style status code (see RUN-01..10): 0 on pass, 1 on
+    /// assertion failure or timeout, 2 on config/CLI error, 3 on
+    /// infrastructure failure (Chromium launch, SAB unavailable, etc.).
     Run(RunArgs),
 
     /// Parse and validate bootroom.toml without starting the server.
@@ -149,7 +151,10 @@ pub struct InitArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct DoctorArgs {
-    /// Path to bootroom.toml; default = ./bootroom.toml. Missing file is informational, not a failure.
+    /// Path to bootroom.toml; default = ./bootroom.toml.
+    ///
+    /// A missing file is informational (reported as `info`), not a failure —
+    /// `doctor` still exits 0 unless a required check fails.
     #[arg(long, value_name = "PATH")]
     pub config: Option<PathBuf>,
 
