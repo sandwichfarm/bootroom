@@ -7,7 +7,7 @@
 #
 # See crates/bootroom/assets/qemu/REBUILD.md for the full procedure.
 
-.PHONY: qemu-assets clean-qemu-assets help
+.PHONY: qemu-assets clean-qemu-assets help install release
 
 QEMU_WASM_DIR := qemu-wasm
 QEMU_OUT_DIR  := crates/bootroom/assets/qemu
@@ -20,6 +20,8 @@ help:
 	@echo "bootroom Makefile targets:"
 	@echo "  qemu-assets       Rebuild qemu-wasm artifacts (requires docker; 10-30 minutes)"
 	@echo "  clean-qemu-assets Remove generated qemu artifacts from $(QEMU_OUT_DIR)"
+	@echo "  install           cargo install --locked --path crates/bootroom (local user install)"
+	@echo "  release           cargo dist build --artifacts=all (local cross-platform smoke; NOT a publish)"
 
 qemu-assets:
 	@command -v docker >/dev/null || { echo "ERROR: docker is required to (re)build qemu-wasm artifacts" >&2; exit 1; }
@@ -79,3 +81,24 @@ clean-qemu-assets:
 	      $(QEMU_OUT_DIR)/load.js \
 	      $(QEMU_OUT_DIR)/qemu-wasm-rev.txt
 	@echo "Cleaned generated qemu artifacts. module.js and REBUILD.md preserved."
+
+# DIST-02: single-command local install. Uses --locked so the workspace
+# Cargo.lock is honored exactly; mismatched transitive deps would otherwise
+# break reproducibility for kernel-CI consumers. Installs to ~/.cargo/bin
+# by default (or whatever CARGO_INSTALL_ROOT points at).
+install:
+	cargo install --locked --path crates/bootroom
+
+# Local cross-platform release smoke. Runs cargo-dist's build pipeline against
+# the locked four targets; produces the same artifact set the GitHub Actions
+# release workflow (.github/workflows/release.yml) emits on a `v*` tag push.
+# Useful BEFORE pushing a tag to catch packaging regressions locally.
+#
+# Requires cargo-dist installed (`cargo install cargo-dist --locked`) and
+# cross-toolchains (cargo-zigbuild handles the linux musl cross; macOS hosts
+# may need additional setup for linux targets — see cargo-dist docs).
+#
+# This target does NOT publish to crates.io or to GitHub Releases — those
+# only happen via the on-tag CI workflow.
+release:
+	cargo dist build --artifacts=all
