@@ -212,13 +212,25 @@ jobs:
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
   # Determines if we should publish/announce
+  # CR-04 (06 review): `custom-release-smoke` was added to `needs:` so the
+  # `host` job (which runs `gh release create`) waits for the smoke. The
+  # `if:` condition also requires the smoke to have succeeded — without
+  # this, a smoke failure would skip the smoke job but still let host run
+  # and publish a broken binary to the GitHub Release that `cargo
+  # binstall` and the curl installer consume. cargo-dist v0.31's
+  # host-jobs hook only wires the smoke into `announce` (which is
+  # operationally inert), so this `needs:` edge is added by hand. If
+  # `dist generate` is re-run, this edit must be reapplied — see
+  # dist-workspace.toml's `host-jobs` comment.
   host:
     needs:
       - plan
       - build-local-artifacts
       - build-global-artifacts
-    # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+      - custom-release-smoke
+    # Only run if we're "publishing", and only if plan, local, global, AND
+    # the release-smoke gate didn't fail (skipped is fine).
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.custom-release-smoke.result == 'skipped' || needs.custom-release-smoke.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: "ubuntu-22.04"
