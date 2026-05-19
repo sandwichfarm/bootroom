@@ -83,7 +83,7 @@ Plans:
   5. The kernel watcher uses `notify-debouncer-full` (~300ms debounce), watches the parent dir for the kernel filename (atomic-rename safe), requires size-stability across debounce ticks, sniffs ELF magic bytes (rejecting non-ELF with a UI warning), and surfaces a non-intrusive "fresher build available" banner — never auto-reloads. Manual serial typing is disabled while a scenario is running and re-enabled on completion.
 **Plans:** 11 plans
 Plans:
-- [ ] 03-01-PLAN.md — bootroom-core config types + decode_bytes_escape + LoadedConfig + override merge unit tests (CFG-02..06, ACT-03)
+- [x] 03-01-PLAN.md — bootroom-core config types + decode_bytes_escape + LoadedConfig + override merge unit tests (CFG-02..06, ACT-03)
 - [x] 03-02-PLAN.md — WsMessage gains 3 additive variants (KernelChanged, ConfigUpdate, ConfigInvalid) + roundtrip tests (CFG-10, WCH-05)
 - [ ] 03-03-PLAN.md — CLI refactor to Cmd::{Serve,Check,Init} + ServeArgs --config + --action repeatable (CFG-01, CFG-07, CFG-08, ACT-03)
 - [ ] 03-04-PLAN.md — bootroom check + bootroom init handlers with EXAMPLE const + integration tests (CFG-07, CFG-08)
