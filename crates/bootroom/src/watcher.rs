@@ -386,10 +386,20 @@ fn handle_kernel_change(state: &AppState) {
 /// On a kernel of N bytes the peak heap usage is O(64 KiB) regardless
 /// of N, vs O(N) for `std::fs::read(path) -> Vec<u8>`. Sha256 itself
 /// keeps a fixed-size state, so no allocations grow with input size.
+///
+/// # Errors
+///
+/// Returns the underlying `std::io::Error` if the file cannot be opened
+/// or a read fails partway through (truncation mid-read, permission
+/// revoked, disk error). Callers in this module convert that to a
+/// `KernelChanged { ok: false, reason: Some("hash error: …") }` frame.
 fn hash_file_streaming(path: &std::path::Path) -> std::io::Result<String> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    let mut buf = [0u8; 64 * 1024];
+    // 64 KiB chunked reads. Heap-allocate (rather than stack) so the
+    // function body stays well under typical 8 KiB stack budgets — this
+    // is also the path clippy's `large_stack_arrays` lint nudges toward.
+    let mut buf = vec![0u8; 64 * 1024];
     loop {
         let n = file.read(&mut buf)?;
         if n == 0 {

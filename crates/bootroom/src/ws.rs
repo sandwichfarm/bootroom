@@ -57,6 +57,11 @@ use tokio::sync::{broadcast::error::RecvError, mpsc};
 /// Strategy: compare the `Origin` header against `state.allowed_origins`
 /// (populated by `server::run` from the bound address). Reject mismatches
 /// and missing `Origin` with HTTP 403 BEFORE calling `on_upgrade`.
+///
+/// # Errors
+///
+/// Returns `StatusCode::FORBIDDEN` when the request lacks an `Origin`
+/// header or its value is not present in `state.allowed_origins`.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,

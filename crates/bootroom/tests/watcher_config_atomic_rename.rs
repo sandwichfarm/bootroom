@@ -5,7 +5,7 @@
 //! inode after one rename, silently missing every subsequent edit.
 //!
 //! Editors that save this way include vim with `:set writebackup`,
-//! VS Code, JetBrains IDEs, `git checkout`, and any `make`-driven
+//! `VS Code`, `JetBrains` IDEs, `git checkout`, and any `make`-driven
 //! config regenerator. The fix watches the config's PARENT dir and
 //! demuxes by basename equality (same pattern as the kernel watch).
 
@@ -69,7 +69,7 @@ async fn atomic_rename_save_fires_config_update() {
 }
 
 /// Drain the broadcast channel until a config-shaped frame arrives or
-/// the deadline expires; skip unrelated noise (KernelChanged etc.).
+/// the deadline expires; skip unrelated noise (`KernelChanged` etc.).
 async fn recv_until_config(
     rx: &mut tokio::sync::broadcast::Receiver<WsMessage>,
     deadline: Duration,
