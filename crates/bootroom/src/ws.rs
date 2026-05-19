@@ -167,18 +167,29 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    // Drop the sender so the writer task's `rx.recv()` returns None and
-    // the task exits cleanly; then await its join handle (best-effort).
+    // CR-01: ordering matters. The forwarder owns a clone of `tx`
+    // (`tx_for_bcast`) and is typically parked in `bcast_rx.recv().await`,
+    // so simply dropping our local `tx` here is NOT sufficient to free
+    // the writer: the forwarder's clone keeps the mpsc alive and the
+    // writer's `rx.recv()` never returns `None`.
+    //
+    // The forwarder normally observes channel closure via
+    // `tx_for_bcast.send().is_err()`, which requires `rx` to be dropped —
+    // but `rx` lives inside the writer task, which is exactly what we
+    // need to join. Circular: deadlock per disconnect (one orphan
+    // writer + one orphan forwarder per WS connection).
+    //
+    // Break the cycle by aborting the forwarder FIRST. After awaiting
+    // the aborted task its locals (including the `tx_for_bcast` clone)
+    // are dropped. Then dropping our own `tx` leaves zero senders, the
+    // writer's `rx.recv()` returns `None`, and the writer exits.
+    bcast_forwarder.abort();
+    // Await the aborted forwarder so its locals are fully dropped before
+    // we proceed. `JoinError::Cancelled` is the expected outcome here;
+    // swallow it.
+    let _ = bcast_forwarder.await;
     drop(tx);
     let _ = writer.await;
-    // Fire-and-forget cleanup of the broadcast forwarder. The forwarder
-    // would also exit naturally when its `tx_for_bcast.send()` errors
-    // (after the writer dropped `rx`), but explicit abort guarantees no
-    // straggler iteration if the broadcast channel is busy. Acceptable
-    // per T-03-08-05: the task may write to an already-dropped mpsc
-    // (will Err and break) or be parked in `recv()` (abort interrupts
-    // cleanly).
-    bcast_forwarder.abort();
     tracing::info!("ws connection closed");
 }
 
