@@ -126,6 +126,35 @@ impl AppState {
             loaded_config,
         )
     }
+
+    /// Test-only constructor that mirrors [`AppState::new_for_test`] but
+    /// accepts an externally-built [`LoadedConfig`]. Used by the
+    /// `/api/config` integration tests in Plan 03-07 to exercise the
+    /// projection shape against an arbitrary TOML without spinning up the
+    /// real watcher / `server::run` preflight.
+    ///
+    /// Scope note: this method was added in Plan 03-07 (not Plan 03-05)
+    /// because the need surfaced when the `/api/config` test surface was
+    /// being assembled. Treat the addition as test infrastructure — no
+    /// production code path constructs an `AppState` this way.
+    #[must_use]
+    pub fn new_for_test_with_loaded(
+        kernel: PathBuf,
+        assets_dir: Option<PathBuf>,
+        loaded_config: LoadedConfig,
+    ) -> Self {
+        let kernel_canon = std::fs::canonicalize(&kernel).unwrap_or_else(|_| kernel.clone());
+        let config_path = PathBuf::from("bootroom.toml");
+        let config_path_canon = config_path.clone();
+        Self::new(
+            kernel,
+            kernel_canon,
+            assets_dir,
+            config_path,
+            config_path_canon,
+            loaded_config,
+        )
+    }
 }
 
 #[cfg(test)]

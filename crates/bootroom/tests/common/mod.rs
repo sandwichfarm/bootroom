@@ -46,6 +46,32 @@ pub async fn spawn(kernel: PathBuf, assets_dir: Option<PathBuf>) -> TestServer {
     }
 }
 
+/// Spawn a bootroom HTTP server with an arbitrary `LoadedConfig`.
+///
+/// Built for the Plan 03-07 `/api/config` integration tests: the caller
+/// supplies any TOML string and (optional) CLI `--action` overrides, and
+/// we wire the resulting `LoadedConfig` directly into `AppState` via
+/// [`bootroom::AppState::new_for_test_with_loaded`]. No real watcher runs;
+/// no `bootroom.toml` is written to disk.
+pub async fn spawn_with_loaded(
+    kernel: PathBuf,
+    loaded: bootroom_core::config::LoadedConfig,
+) -> TestServer {
+    let state = Arc::new(bootroom::AppState::new_for_test_with_loaded(
+        kernel, None, loaded,
+    ));
+    let app = build_router(state);
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind 0");
+    let addr = listener.local_addr().expect("local_addr");
+    let handle = tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    TestServer {
+        base_url: format!("http://{addr}"),
+        handle,
+    }
+}
+
 /// Spawn a bootroom HTTP server AND return the `Arc<AppState>` so the
 /// test can call `state.ws_broadcast.send(...)` directly. Used by
 /// `ws_broadcast_fanout.rs` to verify Plan 03-08's per-connection
