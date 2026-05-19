@@ -238,4 +238,112 @@ mod tests {
         let back: WsMessage = serde_json::from_str(&s).unwrap();
         assert_eq!(back, m);
     }
+
+    #[test]
+    fn scenario_start_roundtrip() {
+        let m = WsMessage::ScenarioStart {
+            scenario: "boot_smoke".into(),
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+        assert!(s.contains(r#""type":"ScenarioStart""#), "got: {s}");
+        assert!(s.contains(r#""scenario":"boot_smoke""#), "got: {s}");
+    }
+
+    #[test]
+    fn scenario_abort_roundtrip() {
+        let m = WsMessage::ScenarioAbort {
+            reason: "outer timeout".into(),
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+        assert!(s.contains(r#""type":"ScenarioAbort""#), "got: {s}");
+    }
+
+    #[test]
+    fn scenario_result_pass_roundtrip() {
+        let m = WsMessage::ScenarioResult {
+            verdict: "pass".into(),
+            scenario: "boot_smoke".into(),
+            started_at: "2026-05-19T14:32:01.123Z".into(),
+            ended_at: "2026-05-19T14:32:03.311Z".into(),
+            actions: serde_json::json!([{"label":"reboot","verdict":"pass"}]),
+            transcript: serde_json::json!([
+                {"ts":"2026-05-19T14:32:01.123Z","type":"scenario_start"}
+            ]),
+            error: None,
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+        assert!(s.contains(r#""type":"ScenarioResult""#), "got: {s}");
+        assert!(s.contains(r#""verdict":"pass""#), "got: {s}");
+        assert!(s.contains(r#""error":null"#), "got: {s}");
+    }
+
+    #[test]
+    fn scenario_result_timeout_roundtrip() {
+        let m = WsMessage::ScenarioResult {
+            verdict: "timeout".into(),
+            scenario: "boot_smoke".into(),
+            started_at: "2026-05-19T14:32:01.123Z".into(),
+            ended_at: "2026-05-19T14:32:31.999Z".into(),
+            actions: serde_json::json!([]),
+            transcript: serde_json::json!([]),
+            error: Some("no serial output observed".into()),
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+        assert!(
+            s.contains(r#""error":"no serial output observed""#),
+            "got: {s}"
+        );
+    }
+
+    #[test]
+    fn scenario_result_opaque_payload_roundtrip() {
+        // Exercises `actions` + `transcript` with nested arrays-of-objects,
+        // matching the JSONL event shapes in 04-RESEARCH "JSONL transcript
+        // event shapes". `serde_json::Value` derives PartialEq, so
+        // assert_eq is sufficient — no manual field-walk needed.
+        let actions = serde_json::json!([
+            {
+                "label": "reboot",
+                "verdict": "pass",
+                "assertions": [
+                    {"kind": "regex", "pattern": "hello", "verdict": "pass"},
+                    {"kind": "regex", "pattern": "world", "verdict": "pass"}
+                ]
+            },
+            {
+                "label": "halt",
+                "verdict": "fail",
+                "assertions": [
+                    {"kind": "regex", "pattern": "halted", "verdict": "fail"}
+                ]
+            }
+        ]);
+        let transcript = serde_json::json!([
+            {"ts": "2026-05-19T14:32:01.123Z", "type": "scenario_start", "scenario": "boot_smoke"},
+            {"ts": "2026-05-19T14:32:01.456Z", "type": "action_start", "label": "reboot"},
+            {"ts": "2026-05-19T14:32:02.789Z", "type": "serial_out", "data_b64": "aGVsbG8gd29ybGQK"},
+            {"ts": "2026-05-19T14:32:03.000Z", "type": "action_end", "label": "reboot", "verdict": "pass"},
+            {"ts": "2026-05-19T14:32:03.311Z", "type": "scenario_end", "verdict": "fail"}
+        ]);
+        let m = WsMessage::ScenarioResult {
+            verdict: "fail".into(),
+            scenario: "boot_smoke".into(),
+            started_at: "2026-05-19T14:32:01.123Z".into(),
+            ended_at: "2026-05-19T14:32:03.311Z".into(),
+            actions,
+            transcript,
+            error: None,
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+    }
 }
