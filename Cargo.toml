@@ -13,6 +13,9 @@ authors = ["sandwich <sandwich.farm@protonmail.com>"]
 [workspace.dependencies]
 axum = "0.8.9"
 base64 = "0.22"
+notify = "8"
+notify-debouncer-full = "0.7"
+toml = "1.1"
 tower = "0.5.3"
 tower-http = { version = "0.6.10", features = ["set-header", "trace"] }
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "signal", "sync", "fs", "io-util"] }
