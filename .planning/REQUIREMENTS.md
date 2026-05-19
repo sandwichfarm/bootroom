@@ -55,12 +55,12 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CFG-06**: Load-time validation that scenarios reference only existing actions; failure prints a clear, locating error.
 - [x] **CFG-07**: `bootroom check` subcommand validates the config without running the server.
 - [x] **CFG-08**: `bootroom init` writes a minimal example `bootroom.toml`.
-- [ ] **CFG-09**: Action button order in the UI is stable (preserved from TOML insertion order).
+- [x] **CFG-09**: Action button order in the UI is stable (preserved from TOML insertion order).
 - [x] **CFG-10**: Live reload of `bootroom.toml`: editing the file updates the UI in place (no server restart).
 
 ### Action Buttons
 
-- [ ] **ACT-01**: Buttons rendered from `/api/config` JSON projection, grouped per TOML.
+- [x] **ACT-01**: Buttons rendered from `/api/config` JSON projection, grouped per TOML.
 - [ ] **ACT-02**: Pressing a button writes its byte sequence to the guest serial (via xterm-pty `slave.write`).
 - [x] **ACT-03**: CLI `--action "label=<bytes>"` (repeatable) appends/overrides ad-hoc actions without editing config.
 - [ ] **ACT-04**: Manual serial typing is disabled while a scenario is running; re-enabled on completion.
@@ -178,9 +178,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CFG-06 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-07 | Phase 3 — Config, Buttons, Watcher | Complete |
 | CFG-08 | Phase 3 — Config, Buttons, Watcher | Complete |
-| CFG-09 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-09 | Phase 3 — Config, Buttons, Watcher | Complete |
 | CFG-10 | Phase 3 — Config, Buttons, Watcher | Complete |
-| ACT-01 | Phase 3 — Config, Buttons, Watcher | Pending |
+| ACT-01 | Phase 3 — Config, Buttons, Watcher | Complete |
 | ACT-02 | Phase 3 — Config, Buttons, Watcher | Pending |
 | ACT-03 | Phase 3 — Config, Buttons, Watcher | Complete |
 | ACT-04 | Phase 3 — Config, Buttons, Watcher | Pending |

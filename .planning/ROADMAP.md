@@ -81,7 +81,7 @@ Plans:
   3. Scenarios are declared as ordered references to actions plus optional assertions and timeouts; load-time validation rejects references to missing actions with a clear, locating error. `bootroom check` validates the config without running the server; `bootroom init` writes a minimal example.
   4. Editing `bootroom.toml` while `serve` is running updates the UI in place (no server restart).
   5. The kernel watcher uses `notify-debouncer-full` (~300ms debounce), watches the parent dir for the kernel filename (atomic-rename safe), requires size-stability across debounce ticks, sniffs ELF magic bytes (rejecting non-ELF with a UI warning), and surfaces a non-intrusive "fresher build available" banner — never auto-reloads. Manual serial typing is disabled while a scenario is running and re-enabled on completion.
-**Plans:** 11 plans
+**Plans:** 10/11 plans executed
 Plans:
 - [x] 03-01-PLAN.md — bootroom-core config types + decode_bytes_escape + LoadedConfig + override merge unit tests (CFG-02..06, ACT-03)
 - [x] 03-02-PLAN.md — WsMessage gains 3 additive variants (KernelChanged, ConfigUpdate, ConfigInvalid) + roundtrip tests (CFG-10, WCH-05)
