@@ -1,10 +1,14 @@
 ---
 phase: "03"
 depth: "standard"
-status: "findings"
+status: "fixed"
 critical_count: 3
 warning_count: 9
 info_count: 5
+fixed_at: "2026-05-19"
+fixed_critical: 3
+fixed_warning: 6
+deferred_warning: 3
 ---
 
 # Phase 3: Code Review Report
@@ -258,3 +262,54 @@ Box::leak(Box::new(debouncer));
 _Reviewed: 2026-05-19_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+## Fixes Applied
+
+**Fixed at:** 2026-05-19
+**Test outcome:** `cargo test --workspace` — all suites green (47 lib + 41 integration tests, 34 bootroom-core, 0 failures). `cargo clippy --workspace --all-targets` clean.
+
+### Critical (3/3 fixed)
+
+| ID | Commit | Note |
+|----|--------|------|
+| CR-01 | `96f4916` | Abort `bcast_forwarder` before awaiting `writer`; await the cancelled handle so its `tx_for_bcast` clone is dropped, then drop the outer `tx` and join the writer. |
+| CR-02 | `da38628` | `ws_handler` extracts the `Origin` header and rejects missing or non-matching origins with HTTP 403. `server::run` derives the allow-list from the bound `SocketAddr` (`http://<bound>` plus `http://localhost:<port>` on loopback) and stores it in `AppState.allowed_origins`. Two regression tests pin the gate. |
+| CR-03 | `823e42d` | Watch the config's parent directory non-recursively (mirrors the kernel watch) and demux by basename equality, defeating the inotify-follows-orphan-inode trap on atomic-rename saves. Added `watcher_config_atomic_rename` regression test doing two consecutive rename saves. |
+
+### Warning (6/9 fixed, 3 deferred)
+
+| ID | Commit | Note |
+|----|--------|------|
+| WR-01 | `8b82f33` | Stream-hash the kernel in 64 KiB heap-allocated chunks via new `hash_file_streaming` helper. Peak heap is O(64 KiB) regardless of N. |
+| WR-03 | `8b82f33` | Replace `Box::leak(Box::new(debouncer))` + no-op `let _ = &*leaked` with `std::mem::forget(debouncer)`. |
+| WR-04 | `b1fb581` | `bootroom init` uses `OpenOptions::create_new(true)` (atomic) instead of `path.exists() + fs::write`. |
+| WR-06 | `d595f8a` | Truncate `--action` input to ~60 chars before Debug-printing; drop the input entirely for the empty-label case. |
+| WR-07 | `16f38d5` | Extend `humanBytes` unit table with `PiB` and `EiB`. |
+| WR-08 | `16f38d5` | `server::run` canonicalizes `--assets-dir` strictly; a non-existent path is a fatal startup error. Regression test added. |
+
+**Deferred (rationale):**
+
+- **WR-02** (kernel-handler `std::thread::sleep` blocks the debouncer dispatch thread): explicitly out of v1 perf scope per the review; the module doc already documents the 100 ms latency. Will revisit when moving size-stability into `spawn_blocking`.
+- **WR-05** (frame-field boolean/string narrowing helper in `app.js`): "Defensive; low priority" per the review. Centralising the wire-validation pattern is worth doing alongside the v1 polish pass on the JS surface, not as a one-line patch here.
+- **WR-09** (kernel size instability retries forever): "Mitigated in practice — `make` finishes link in well under a second." Will add a deferral cap if real-world flakes surface.
+
+### Info (5/5 deferred)
+
+All Info findings are scope notes or low-value polish:
+
+- **IN-01** (`escape.rs` non-ASCII byte renders as `?`): cosmetic; affects only the error message text. Backlog.
+- **IN-02** (watcher loaded_config lock-ordering note): purely informational.
+- **IN-03** (mtime recomputed after size-stability gate): "Cosmetic in practice"; would round-trip with WR-09 cleanup.
+- **IN-04** (`!important` on `.xterm` selectors): documented vendor pinning concern; no code change indicated.
+- **IN-05** (WS Hello version compat stub): Phase 6 work.
+
+### Verification follow-ups
+
+- Integration test added for WS Origin gate: foreign-origin and missing-origin both 403.
+- Integration test added for config atomic-rename: two consecutive rename saves both fire `ConfigUpdate`.
+- `cargo clippy --workspace --all-targets` clean (pedantic lint set respected).
+
+_Fixed by: Claude (gsd-code-fixer)_
+_Iteration: 1_
