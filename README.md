@@ -22,6 +22,12 @@ NORN's CI and local debug flows pull `bootroom` as an external dependency.
 bootroom ships three install paths. Pick the one that matches your
 environment.
 
+> **Pre-1.0 status:** the install matrix below becomes active after the
+> first published release. Until bootroom is on crates.io and a tagged
+> GitHub Release exists, use `cargo install --locked --git
+> https://github.com/sandwich-farm/bootroom bootroom` or build from a
+> clone (`make install`).
+
 | Path | Command | When to use |
 |---|---|---|
 | `cargo install` | `cargo install --locked bootroom` | Primary path for Rust-equipped developers. |

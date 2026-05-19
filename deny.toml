@@ -36,6 +36,11 @@ feature-depth = 1
 # (GPL-*, AGPL-*, LGPL-*, SSPL-*) are rejected simply by not appearing.
 # -----------------------------------------------------------------------------
 [licenses]
+# Declare schema v2 explicitly. cargo-deny v0.16+ defaults to v2, but
+# pinning the version here defends against a future v3 default flip and
+# documents the intended schema (WR-04 in the 06 review).
+version = 2
+
 # cargo-deny's recommended threshold for matching ambiguous LICENSE-file text
 # against a declared SPDX expression. Lower values cause false positives.
 confidence-threshold = 0.93
@@ -108,10 +113,15 @@ deny = []
 # `ignore` entries for vetted exceptions. `yanked` is still configurable.
 # -----------------------------------------------------------------------------
 [advisories]
-# Warn on yanked crate versions (rather than deny) to keep first-run CI
-# from failing on pre-existing yanked transitive deps. Promote to "deny"
-# once the baseline is clean.
-yanked = "warn"
+# Declare schema v2 explicitly (mirrors [licenses].version above — WR-04
+# in the 06 review).
+version = 2
+
+# Yanked crate versions are a hard fail. The baseline CI run is clean
+# as of the 06 review, so the prior "warn" posture is no longer needed.
+# A yanked transitive dep slipping into a release is exactly the
+# supply-chain regression cargo-deny exists to catch.
+yanked = "deny"
 
 # Vetted ignores go here. Each entry pairs a RustSec advisory ID with the
 # rationale for why it does not apply to bootroom (path of exposure,
