@@ -1,0 +1,39 @@
+name: cargo-deny
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# cargo-deny is a license/security gate; cancel superseded runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-deny:
+    name: cargo deny check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pin the cargo-deny version explicitly. Drift between local and CI is
+      # impossible if this version matches the one used during 06-05 plan
+      # execution. The local install used `cargo install cargo-deny --locked
+      # --version ^0.19`. The caret allows patch upgrades within 0.19.x;
+      # a v0.20 with breaking schema changes will require an explicit bump.
+      #
+      # NOTE: the original plan specified ^0.14; that pin was bumped to
+      # ^0.19 because (a) cargo-deny v0.14 cannot parse CVSS 4.0 entries in
+      # the current RustSec advisory DB (RUSTSEC-2026-0041), and (b) v0.16+
+      # removed several deprecated keys (unlicensed, [licenses].deny,
+      # [advisories].unmaintained, [advisories].unsound) that the plan-text
+      # deny.toml relied on. The v2 schema is documented in deny.toml.
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version ^0.19
+
+      # `--hide-inclusion-graph` keeps log output bounded; cargo-deny still
+      # prints the full graph when an issue is found.
+      - name: Run cargo deny check
+        run: cargo deny check --hide-inclusion-graph
