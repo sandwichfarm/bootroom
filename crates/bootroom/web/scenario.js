@@ -220,16 +220,6 @@ function evaluate(rawChunks, assertion, atTimeout) {
 }
 
 /**
- * Promise that resolves with 'timeout' after `ms` milliseconds. Used as
- * the racing arm for the per-scenario budget.
- * @param {number} ms
- * @returns {Promise<'timeout'>}
- */
-function timeoutPromise(ms) {
-  return new Promise((resolve) => setTimeout(() => resolve('timeout'), ms));
-}
-
-/**
  * Pitfall #2 mitigation. Poll `ws.bufferedAmount` until it reaches 0
  * (i.e. the ScenarioResult frame has actually been pushed to the
  * socket) or until 5 s elapse — the escape hatch is here because
@@ -257,7 +247,13 @@ function perActionTimeoutMs(actionLabel, assertionList) {
   let max = 0;
   for (const a of assertionList) {
     if (a.after === actionLabel || a.after === 'any') {
-      max = Math.max(max, a.timeout_ms || 5000);
+      // WR-08 fix: use `??` so an explicit `timeout_ms: 0` is
+      // preserved as `0` rather than being silently rewritten to
+      // the 5000 ms default by `||`'s falsy fallback. An explicit
+      // zero will still get filtered out by the `max > 0` check
+      // below if every relevant assertion specifies 0 — that path
+      // remains a defensive 5000 ms fallback, which is intentional.
+      max = Math.max(max, a.timeout_ms ?? 5000);
     }
   }
   return max > 0 ? max : 5000;
@@ -465,7 +461,12 @@ export async function runScenario(scenario, actions, deps) {
   let scenarioError = null;
 
   // Outer per-scenario timeout (RUN-06). Fallback 30 s.
-  const scenarioBudgetMs = scenario.timeout_ms || 30_000;
+  // WR-08 fix: use `??` so an explicit `timeout_ms: 0` in the config
+  // is preserved (`||` would silently substitute 30_000 for any
+  // falsy value including 0). A zero budget will resolve the race
+  // arm immediately at scenario start, which is the documented
+  // semantic for "scenario must already have passed when triggered".
+  const scenarioBudgetMs = scenario.timeout_ms ?? 30_000;
 
   try {
     funnel.lockInput();
@@ -602,17 +603,38 @@ export async function runScenario(scenario, actions, deps) {
       }
     };
 
-    await Promise.race([
-      inner(),
-      timeoutPromise(scenarioBudgetMs).then(() => {
-        // The scenario budget fired before inner() resolved. We do not
-        // forcibly cancel inner() — JS has no Promise cancellation —
-        // but we record the verdict; the finally block still cleans
-        // up the subscription and the lock.
+    // WR-03 fix: capture the setTimeout handle so it can be cleared
+    // when inner() wins the race. Without this, the timer keeps
+    // running long after the scenario completes; when it fires it
+    // mutates `scenarioVerdict` / `scenarioError` — harmless today
+    // because the frame has already been built, but a real dead-write
+    // surface for future readers AND a runtime-keepalive leak in
+    // headed-debug sessions. We additionally gate the mutation on a
+    // `completed` flag so the timeout handler is a no-op if inner()
+    // has already resolved between the race winner being decided and
+    // setTimeout's callback running.
+    let completed = false;
+    let timerHandle = null;
+    const timeoutP = new Promise((resolve) => {
+      timerHandle = setTimeout(() => resolve('timeout'), scenarioBudgetMs);
+    });
+    try {
+      const winner = await Promise.race([
+        inner().then(() => 'inner'),
+        timeoutP,
+      ]);
+      if (winner === 'timeout' && !completed) {
+        // The scenario budget fired before inner() resolved. We do
+        // not forcibly cancel inner() — JS has no Promise
+        // cancellation — but we record the verdict; the finally
+        // block still cleans up the subscription and the lock.
         scenarioVerdict = 'timeout';
         scenarioError = `scenario timeout after ${scenarioBudgetMs}ms`;
-      }),
-    ]);
+      }
+    } finally {
+      completed = true;
+      if (timerHandle !== null) clearTimeout(timerHandle);
+    }
   } catch (e) {
     scenarioVerdict = 'error';
     scenarioError = String(e);
