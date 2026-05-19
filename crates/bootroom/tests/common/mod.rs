@@ -30,7 +30,7 @@ impl Drop for TestServer {
 /// Spawn a bootroom HTTP server on an ephemeral port.
 /// The server runs on the same tokio runtime as the test.
 pub async fn spawn(kernel: PathBuf, assets_dir: Option<PathBuf>) -> TestServer {
-    let state = Arc::new(AppState::new(kernel, assets_dir));
+    let state = Arc::new(AppState::new_for_test(kernel, assets_dir));
     let app = build_router(state);
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind 0");
     let addr = listener.local_addr().expect("local_addr");

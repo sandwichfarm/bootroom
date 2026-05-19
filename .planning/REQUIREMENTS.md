@@ -47,14 +47,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Config (TOML)
 
-- [ ] **CFG-01**: `bootroom.toml` parsed from CWD by default; overridable via `--config <path>`.
+- [x] **CFG-01**: `bootroom.toml` parsed from CWD by default; overridable via `--config <path>`.
 - [ ] **CFG-02**: Config supports labeled, grouped **actions** with byte/string payloads sent to guest serial.
 - [ ] **CFG-03**: Config supports **scenarios** as ordered references to actions plus optional assertions and timeouts.
 - [ ] **CFG-04**: Top-level `schema_version` field; load fails on incompatible version.
 - [ ] **CFG-05**: All config structs use `#[serde(deny_unknown_fields)]`; typos produce loud errors.
 - [ ] **CFG-06**: Load-time validation that scenarios reference only existing actions; failure prints a clear, locating error.
-- [ ] **CFG-07**: `bootroom check` subcommand validates the config without running the server.
-- [ ] **CFG-08**: `bootroom init` writes a minimal example `bootroom.toml`.
+- [x] **CFG-07**: `bootroom check` subcommand validates the config without running the server.
+- [x] **CFG-08**: `bootroom init` writes a minimal example `bootroom.toml`.
 - [ ] **CFG-09**: Action button order in the UI is stable (preserved from TOML insertion order).
 - [x] **CFG-10**: Live reload of `bootroom.toml`: editing the file updates the UI in place (no server restart).
 
@@ -62,7 +62,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **ACT-01**: Buttons rendered from `/api/config` JSON projection, grouped per TOML.
 - [ ] **ACT-02**: Pressing a button writes its byte sequence to the guest serial (via xterm-pty `slave.write`).
-- [ ] **ACT-03**: CLI `--action "label=<bytes>"` (repeatable) appends/overrides ad-hoc actions without editing config.
+- [x] **ACT-03**: CLI `--action "label=<bytes>"` (repeatable) appends/overrides ad-hoc actions without editing config.
 - [ ] **ACT-04**: Manual serial typing is disabled while a scenario is running; re-enabled on completion.
 
 ### Kernel Watcher
@@ -170,19 +170,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WS-02 | Phase 2 — WebSocket + Live Serial | Complete |
 | WS-03 | Phase 2 — WebSocket + Live Serial | Complete |
 | WS-04 | Phase 2 — WebSocket + Live Serial | Complete (02-01) |
-| CFG-01 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-01 | Phase 3 — Config, Buttons, Watcher | Complete |
 | CFG-02 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-03 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-04 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-05 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-06 | Phase 3 — Config, Buttons, Watcher | Pending |
-| CFG-07 | Phase 3 — Config, Buttons, Watcher | Pending |
-| CFG-08 | Phase 3 — Config, Buttons, Watcher | Pending |
+| CFG-07 | Phase 3 — Config, Buttons, Watcher | Complete |
+| CFG-08 | Phase 3 — Config, Buttons, Watcher | Complete |
 | CFG-09 | Phase 3 — Config, Buttons, Watcher | Pending |
 | CFG-10 | Phase 3 — Config, Buttons, Watcher | Complete |
 | ACT-01 | Phase 3 — Config, Buttons, Watcher | Pending |
 | ACT-02 | Phase 3 — Config, Buttons, Watcher | Pending |
-| ACT-03 | Phase 3 — Config, Buttons, Watcher | Pending |
+| ACT-03 | Phase 3 — Config, Buttons, Watcher | Complete |
 | ACT-04 | Phase 3 — Config, Buttons, Watcher | Pending |
 | WCH-01 | Phase 3 — Config, Buttons, Watcher | Pending |
 | WCH-02 | Phase 3 — Config, Buttons, Watcher | Pending |

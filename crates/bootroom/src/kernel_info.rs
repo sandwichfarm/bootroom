@@ -133,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn test_kernel_info_known_bytes() {
         let p = write_tmp("abc", b"abc");
-        let state = Arc::new(AppState::new(p.clone(), None));
+        let state = Arc::new(AppState::new_for_test(p.clone(), None));
         let Json(info) = kernel_info(State(state)).await.unwrap();
         assert_eq!(info.size, 3);
         // sha256("abc") = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
@@ -144,7 +144,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_kernel_info_missing_file() {
-        let state = Arc::new(AppState::new(
+        let state = Arc::new(AppState::new_for_test(
             PathBuf::from("/does/not/exist/at/all"),
             None,
         ));
@@ -159,7 +159,7 @@ mod tests {
     #[tokio::test]
     async fn test_kernel_info_caches_digest_by_size_and_mtime() {
         let p = write_tmp("cache", b"hello-cache");
-        let state = Arc::new(AppState::new(p.clone(), None));
+        let state = Arc::new(AppState::new_for_test(p.clone(), None));
 
         let Json(info1) = kernel_info(State(state.clone())).await.unwrap();
         // Cache populated.

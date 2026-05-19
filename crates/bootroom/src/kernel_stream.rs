@@ -60,7 +60,7 @@ mod tests {
             .unwrap()
             .write_all(&payload)
             .unwrap();
-        let state = Arc::new(AppState::new(p.clone(), None));
+        let state = Arc::new(AppState::new_for_test(p.clone(), None));
         let resp = kernel_stream(State(state)).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
@@ -75,7 +75,7 @@ mod tests {
     #[tokio::test]
     async fn test_kernel_stream_missing_file() {
         let state =
-            Arc::new(AppState::new(PathBuf::from("/does/not/exist"), None));
+            Arc::new(AppState::new_for_test(PathBuf::from("/does/not/exist"), None));
         assert_eq!(
             kernel_stream(State(state)).await.unwrap_err(),
             StatusCode::NOT_FOUND

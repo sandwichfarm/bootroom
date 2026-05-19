@@ -111,7 +111,7 @@ async fn run_spike(
     let mut obs = Observations::default();
 
     // 1. Spawn bootroom server on ephemeral port.
-    let state = Arc::new(AppState::new(kernel.to_path_buf(), None));
+    let state = Arc::new(AppState::new_for_test(kernel.to_path_buf(), None));
     let app = build_router(state);
     let listener = match TcpListener::bind(("127.0.0.1", 0)).await {
         Ok(l) => l,

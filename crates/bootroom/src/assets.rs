@@ -198,7 +198,7 @@ mod tests {
     use std::io::Write;
 
     fn state(assets_dir: Option<PathBuf>) -> Arc<AppState> {
-        Arc::new(AppState::new(
+        Arc::new(AppState::new_for_test(
             PathBuf::from("/tmp/fake-kernel"),
             assets_dir,
         ))
