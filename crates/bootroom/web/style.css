@@ -192,8 +192,7 @@ body.dark {
 }
 
 .hdr-btns button,
-.term-ctrls button,
-.action-btn {
+.term-ctrls button {
   background: var(--surface);
   color: var(--fg);
   border: 0;
@@ -208,21 +207,18 @@ body.dark {
 }
 
 .hdr-btns button:hover,
-.term-ctrls button:hover,
-.action-btn:hover {
+.term-ctrls button:hover {
   box-shadow: inset 0 1px 0 0 var(--fg-muted);
 }
 
 .hdr-btns button:focus-visible,
-.term-ctrls button:focus-visible,
-.action-btn:focus-visible {
+.term-ctrls button:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
 }
 
 .hdr-btns button:disabled,
-.term-ctrls button:disabled,
-.action-btn:disabled {
+.term-ctrls button:disabled {
   color: var(--fg-muted);
   cursor: not-allowed;
 }
@@ -237,87 +233,6 @@ body.dark {
 }
 
 .pill[data-state="IDLE"] {
-  background: var(--fg-muted);
-  color: var(--fg);
-}
-
-/* ------------------------------------------------------------------ */
-/* Phase 3 additions: actions panel, banners, BUSY pill                */
-/* ------------------------------------------------------------------ */
-
-#actions-panel {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--md);
-  align-items: center;
-  padding: var(--sm) var(--md);
-  background: var(--surface);
-  max-height: 25vh;
-  overflow-y: auto;
-}
-
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: var(--sm);
-}
-
-.action-group-label {
-  color: var(--fg-muted);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-#fresh-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--sm);
-  padding: var(--sm) var(--md);
-  background: var(--surface);
-}
-
-#fresh-banner .banner-text {
-  color: var(--fg);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-#banner-launch {
-  color: var(--accent);
-}
-
-#banner-dismiss {
-  color: var(--fg-muted);
-  padding: var(--xs) var(--sm);
-}
-
-#config-banner {
-  background: var(--banner-bg);
-  padding: var(--md);
-}
-
-#config-banner strong {
-  display: block;
-  margin: 0 0 var(--xs) 0;
-  color: var(--banner-head);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-#config-banner .err-body {
-  margin: 0;
-  color: var(--fg);
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.5;
-}
-
-.pill[data-state="BUSY"] {
   background: var(--fg-muted);
   color: var(--fg);
 }
