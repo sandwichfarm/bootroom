@@ -33,7 +33,7 @@ impl<W: Write> VerboseFormatter<W> {
 
     /// Write one assertion verdict line. The pattern is included
     /// via Rust's `Debug` formatter (`{:?}`), which wraps in quotes
-    /// and escapes backslashes — matching what JSON/JS observers
+    /// and escapes backslashes -- matching what JSON/JS observers
     /// expect when grepping CI logs.
     ///
     /// # Errors
@@ -68,7 +68,7 @@ impl<W: Write> VerboseFormatter<W> {
 /// Non-verbose one-line failure summary written to stderr when
 /// `--verbose` is NOT set and the verdict is not `"pass"`.
 ///
-/// 04-CONTEXT writes the failure line with an em-dash (`—`); Open Q4's
+/// 04-CONTEXT writes the failure line with an em-dash; Open Q4's
 /// ASCII-only mandate trumps, so we use a plain hyphen with surrounding
 /// spaces for cross-platform CI portability.
 ///
