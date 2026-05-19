@@ -10,6 +10,14 @@
 //! spawn a writer task draining a bounded `tokio::sync::mpsc::channel`
 //! (capacity 32, T-02-15 back-pressure mitigation), and dispatch frames
 //! in a reader loop.
+//!
+//! Phase 3 (Plan 08): each connection ALSO spawns a `bcast_forwarder`
+//! task that subscribes to `state.ws_broadcast` and forwards every
+//! server-owned frame (`KernelChanged`, `ConfigUpdate`, `ConfigInvalid`,
+//! …) into the same per-connection mpsc that the writer drains. So a
+//! connected `/ws` peer ends up with three tokio tasks per connection:
+//! the reader loop (this fn), the writer (Phase 2), and the broadcast
+//! forwarder (Phase 3).
 
 use crate::state::AppState;
 use axum::{
@@ -22,7 +30,7 @@ use axum::{
 use bootroom_core::WsMessage;
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast::error::RecvError, mpsc};
 
 /// axum extractor entrypoint. Upgrades the connection and hands the
 /// `WebSocket` to `handle_socket`. State extractor is wired so future
@@ -35,6 +43,17 @@ pub async fn ws_handler(
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+    // Three-task architecture (Plan 03-08):
+    //   1. Reader loop (this fn body) — drains inbound WS frames.
+    //   2. Writer task — drains the per-conn mpsc into the WS sink.
+    //   3. Broadcast forwarder task — subscribes to `state.ws_broadcast`
+    //      and forwards every server-owned frame into the same mpsc.
+    //
+    // Pitfall #3 (03-RESEARCH.md): broadcast sends with zero receivers
+    // are silently dropped by tokio's broadcast channel. That is
+    // acceptable here because `/api/config` (HTTP) is the source-of-truth
+    // fallback the browser fetches on connect, so a client that misses a
+    // pre-connect `ConfigUpdate` still recovers via that GET.
     tracing::info!("ws connection opened");
     let (mut sink, mut stream) = socket.split();
 
@@ -42,6 +61,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // mitigation (T-02-15). Producers `send().await`, so when the writer
     // task falls behind the upstream naturally back-pressures.
     let (tx, mut rx) = mpsc::channel::<WsMessage>(32);
+
+    // Subscribe to the broadcast channel BEFORE sending Hello so that any
+    // frame published between Hello and the start of the reader loop is
+    // still captured by THIS connection (T-03-08-03). Subscribing is
+    // cheap and only registers a per-receiver back-buffer; no allocation
+    // happens until the first `send` after subscribe.
+    let mut bcast_rx = state.ws_broadcast.subscribe();
+    let tx_for_bcast = tx.clone();
 
     // Writer task: drain the channel; serialize each `WsMessage` to
     // JSON; emit as `Message::Text`. On send failure (peer gone) log and
@@ -62,6 +89,32 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
         // Channel closed (tx dropped) — best-effort close the sink.
         let _ = sink.close().await;
+    });
+
+    // Broadcast forwarder task: drain `state.ws_broadcast` and feed the
+    // per-connection mpsc. `Lagged` is logged and the loop CONTINUES so
+    // that a momentarily-slow writer task does not permanently silence
+    // server-pushed frames for this client (T-03-08-01 — `skipped` is a
+    // u64 count, never user-controlled bytes, so the warn line has no
+    // amplification surface). `Closed` should be unreachable in the
+    // current AppState lifecycle (the broadcast Sender lives as long as
+    // the process) but the path is handled for completeness.
+    let bcast_forwarder = tokio::spawn(async move {
+        loop {
+            match bcast_rx.recv().await {
+                Ok(msg) => {
+                    if tx_for_bcast.send(msg).await.is_err() {
+                        // The per-connection mpsc was dropped (writer
+                        // gone / connection closing). Exit cleanly.
+                        break;
+                    }
+                }
+                Err(RecvError::Lagged(n)) => {
+                    tracing::warn!(skipped = n, "ws broadcast receiver lagged");
+                }
+                Err(RecvError::Closed) => break,
+            }
+        }
     });
 
     // Initial greeting. Ignored result is intentional: if the channel is
@@ -118,6 +171,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // the task exits cleanly; then await its join handle (best-effort).
     drop(tx);
     let _ = writer.await;
+    // Fire-and-forget cleanup of the broadcast forwarder. The forwarder
+    // would also exit naturally when its `tx_for_bcast.send()` errors
+    // (after the writer dropped `rx`), but explicit abort guarantees no
+    // straggler iteration if the broadcast channel is busy. Acceptable
+    // per T-03-08-05: the task may write to an already-dropped mpsc
+    // (will Err and break) or be parked in `recv()` (abort interrupts
+    // cleanly).
+    bcast_forwarder.abort();
     tracing::info!("ws connection closed");
 }
 
