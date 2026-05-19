@@ -6,6 +6,7 @@ pub mod api_config;
 pub mod assets;
 pub mod check_cmd;
 pub mod cli;
+pub mod doctor_cmd;
 pub mod embed;
 pub mod headers;
 pub mod init_cmd;
