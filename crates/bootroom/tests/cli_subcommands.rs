@@ -83,3 +83,62 @@ fn cli_init_help_includes_force() {
 // `cli_init_stub_exits_nonzero` were RETIRED by Plan 03-04. Their
 // real-behavior replacements live in `tests/check_subcommand.rs` and
 // `tests/init_subcommand.rs` respectively.
+
+// ----- Plan 04-10 additions: pin the `run` subcommand's surface ------
+//
+// These tests are subprocess-level regression pins for the CLI-02
+// shared-flatten contract (`--kernel`, `--config`, `--verbose` visible
+// on both `serve` and `run`) and the run-only `--scenario` /
+// `--log-file` flags. They live alongside the Phase-3 help tests so
+// every CLI surface change runs through the same harness.
+
+#[test]
+fn run_subcommand_help_mentions_shared_flags() {
+    let out = Command::new(bin())
+        .args(["run", "--help"])
+        .output()
+        .expect("run bootroom run --help");
+    assert!(out.status.success(), "got {:?}", out.status);
+    let help = String::from_utf8_lossy(&out.stdout);
+    for needle in ["--kernel", "--config", "--verbose", "--scenario", "--log-file"] {
+        assert!(
+            help.contains(needle),
+            "`bootroom run --help` must mention `{needle}`. Got:\n{help}"
+        );
+    }
+}
+
+#[test]
+fn serve_subcommand_help_still_mentions_shared_flags() {
+    // Regression pin for 04-03's CLI-02 flatten: --kernel/--config/--verbose
+    // must remain visible on `serve --help` after the migration into
+    // CommonArgs.
+    let out = Command::new(bin())
+        .args(["serve", "--help"])
+        .output()
+        .expect("run bootroom serve --help");
+    assert!(out.status.success(), "got {:?}", out.status);
+    let help = String::from_utf8_lossy(&out.stdout);
+    for needle in ["--kernel", "--config", "--verbose"] {
+        assert!(
+            help.contains(needle),
+            "`bootroom serve --help` must mention `{needle}`. Got:\n{help}"
+        );
+    }
+}
+
+#[test]
+fn top_level_help_lists_run_subcommand() {
+    let out = Command::new(bin())
+        .arg("--help")
+        .output()
+        .expect("run bootroom --help");
+    assert!(out.status.success(), "got {:?}", out.status);
+    let help = String::from_utf8_lossy(&out.stdout);
+    for sub in ["serve", "run", "check", "init"] {
+        assert!(
+            help.contains(sub),
+            "`bootroom --help` must mention `{sub}`. Got:\n{help}"
+        );
+    }
+}
