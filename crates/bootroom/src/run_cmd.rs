@@ -393,7 +393,7 @@ fn shell_tokenize(s: &str) -> Vec<String> {
 /// Each candidate is verified by invoking `--version` (Pitfall #6: an
 /// existence check is insufficient -- a non-Chromium binary at the
 /// path would otherwise be picked up silently).
-fn discover_chromium() -> Result<PathBuf, String> {
+pub(crate) fn discover_chromium() -> Result<PathBuf, String> {
     let path_walk = which_via_path_env("chromium")
         .map(|p| p.display().to_string())
         .unwrap_or_default();

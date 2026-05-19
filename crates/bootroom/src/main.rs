@@ -23,5 +23,6 @@ async fn main() -> anyhow::Result<ExitCode> {
         Cmd::Run(args) => Ok(bootroom::run_cmd::run(args).await),
         Cmd::Check(args) => Ok(bootroom::check_cmd::run(args)),
         Cmd::Init(args) => Ok(bootroom::init_cmd::run(&args)),
+        Cmd::Doctor(args) => Ok(bootroom::doctor_cmd::run(args).await),
     }
 }
