@@ -12,6 +12,11 @@ use std::io::{self, Write};
 pub const GLYPH_ACTION: &str = "> ";
 pub const GLYPH_PASS: &str = "+ ";
 pub const GLYPH_FAIL: &str = "- ";
+/// Informational glyph for `bootroom doctor` (Plan 05-04). Used when a
+/// check produces a status that is neither pass nor fail — e.g. the
+/// browser was not discovered (a missing browser is information, not a
+/// CI failure).
+pub const GLYPH_INFO: &str = "~ ";
 
 pub struct VerboseFormatter<W: Write> {
     w: W,
