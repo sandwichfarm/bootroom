@@ -93,7 +93,7 @@ Plans:
 - [x] 03-08-PLAN.md — WS broadcast forwarder per connection + fan-out tests + Lagged handling (CFG-10, WCH-05)
 - [x] 03-09-PLAN.md — index.html DOM containers + style.css Phase-3 rules with zero new hex outside :root (ACT-01, ACT-04, CFG-10, WCH-05)
 - [x] 03-10-PLAN.md — funnel.js lockInput/unlockInput + setLockObserver + manual test case (ACT-04)
-- [ ] 03-11-PLAN.md — app.js renderActionButtons + resolveBanners + WS handlers + caller-side lock guards + headed smoke checkpoint (ACT-01, ACT-02, ACT-04, CFG-09, CFG-10, WCH-05)
+- [x] 03-11-PLAN.md — app.js renderActionButtons + resolveBanners + WS handlers + caller-side lock guards (ACT-01, ACT-02, ACT-04, CFG-09, CFG-10, WCH-05); headed-smoke checkpoint deferred to next interactive session (autonomous mode + qemu-wasm assets blocked by Phase-1 01-02)
 **UI hint:** yes
 
 ### Phase 4: Scenario Engine + Headless `run`
