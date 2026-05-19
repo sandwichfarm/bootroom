@@ -107,7 +107,20 @@ Plans:
   3. Per-action and per-scenario timeouts have explicit defaults and produce structured failures; per-action serial buffers reset by default (configurable carry-over).
   4. Headless mode performs a `crossOriginIsolated` startup self-check and aborts early with a clear message if SAB is unavailable; the process exits 0 on pass / non-zero on fail.
   5. `--log-file <path>` writes a full transcript (timestamps, action sends, serial output, assertion results); `--verbose` streams scenario progress to stderr for CI logs. Common flags (`--kernel`, `--config`, `--verbose`) are shared across `serve` and `run` via clap `#[flatten]`.
-**Plans:** TBD
+**Plans:** 11 plans
+Plans:
+- [ ] 04-PLAN.md — Plan-set overview, dependency graph, wave structure, source-audit
+- [ ] 04-01-PLAN.md — bootroom-core WsMessage gains 3 additive variants (ScenarioStart, ScenarioResult, ScenarioAbort) + roundtrip tests (RUN-01, RUN-03, RUN-08)
+- [ ] 04-02-PLAN.md — LoadedConfig regex compile-check at load time + `regex` workspace dep (RUN-04, RUN-05)
+- [ ] 04-03-PLAN.md — CLI refactor: CommonArgs flatten + Cmd::Run(RunArgs) + stub run_cmd::run (CLI-02, RUN-01, RUN-08, RUN-09)
+- [ ] 04-04-PLAN.md — AppState scenario_result_tx oneshot slot + install/take helpers + tests (RUN-01)
+- [ ] 04-05-PLAN.md — ws.rs handle_wire match arms for ScenarioResult/Start/Abort + WS roundtrip integration test (RUN-01, RUN-03)
+- [ ] 04-06-PLAN.md — bootroom::transcript TranscriptEvent + JSONL writer + bootroom::verbose ASCII formatter + tests (RUN-08, RUN-09)
+- [ ] 04-07-PLAN.md — run_cmd.rs full driver: chromium discovery + axum 127.0.0.1:0 + chromiumoxide launch + COI self-check + oneshot await + exit-code translation + transcript persistence + verbose stderr (RUN-01..03, RUN-06, RUN-10)
+- [ ] 04-08-PLAN.md — web/scenario.js engine: sequencer + per-action Map + secondary flat buffer + ANSI strip + line-buffered evaluate + funnel lock + ws.send + bufferedAmount poll (RUN-04..07)
+- [ ] 04-09-PLAN.md — app.js URL-query scenario detection + dynamic-import scenario.js after Hello + initialConfigLoad (RUN-01, RUN-03)
+- [ ] 04-10-PLAN.md — Integration tests: cli help shapes + same-router pin + JSONL shape + verbose stderr + 2/3 exit-code paths (CLI-02, RUN-03, RUN-08, RUN-09, RUN-01)
+- [ ] 04-11-PLAN.md — #[ignore]-tagged e2e test against Spike-B NORN fixture + boot_smoke.toml + 90s test timeout + pgrep orphan check (RUN-01, RUN-02, RUN-04, RUN-05, RUN-08, RUN-10)
 
 ### Phase 5: Diagnostics & Doctor
 **Goal:** A user (or a confused CI job) runs `bootroom doctor` and gets a single-screen preflight report — version, embedded qemu-wasm rev, detected browser, COOP/COEP self-check, config validity — closing the documented CLI surface.
@@ -161,9 +174,10 @@ All 59 v1 requirements mapped to exactly one phase. See REQUIREMENTS.md Traceabi
 | 1. Walking Skeleton | 9/9 | Complete | 2026-05-17 |
 | 2. WebSocket + Live Serial | 6/6 | Complete | 2026-05-18 |
 | 3. Config, Buttons, Watcher | 11/11 | Complete | 2026-05-19 |
-| 4. Scenario Engine + Headless | 0/? | Not started | — |
+| 4. Scenario Engine + Headless | 0/11 | Planned | — |
 | 5. Diagnostics & Doctor | 0/? | Not started | — |
 | 6. Distribution | 0/? | Not started | — |
 
 ---
 *Roadmap created: 2026-05-17 via gsd-roadmapper*
+*Phase 4 plans created: 2026-05-19 via gsd-planner*
