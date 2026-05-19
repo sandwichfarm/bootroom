@@ -46,6 +46,32 @@ pub async fn spawn(kernel: PathBuf, assets_dir: Option<PathBuf>) -> TestServer {
     }
 }
 
+/// Spawn a bootroom HTTP server AND return the `Arc<AppState>` so the
+/// test can call `state.ws_broadcast.send(...)` directly. Used by
+/// `ws_broadcast_fanout.rs` to verify Plan 03-08's per-connection
+/// broadcast forwarder fans frames out to every connected client.
+///
+/// Kept distinct from [`spawn`] (Phase 2) — this helper's sole job is
+/// to expose the `AppState` handle so the test can publish broadcast
+/// frames without going through HTTP / the watcher.
+pub async fn spawn_with_broadcast_handle(
+    kernel: PathBuf,
+    assets_dir: Option<PathBuf>,
+) -> (TestServer, Arc<AppState>) {
+    let state = Arc::new(AppState::new_for_test(kernel, assets_dir));
+    let app = build_router(state.clone());
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind 0");
+    let addr = listener.local_addr().expect("local_addr");
+    let handle = tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    let server = TestServer {
+        base_url: format!("http://{addr}"),
+        handle,
+    };
+    (server, state)
+}
+
 /// Write a tempfile with `bytes`; caller drops the returned `NamedTempFile`
 /// when the test scope ends (auto-deletes from disk).
 pub fn write_kernel_tempfile(bytes: &[u8]) -> tempfile::NamedTempFile {
