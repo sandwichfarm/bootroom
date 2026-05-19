@@ -90,6 +90,15 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         config_path_canon,
         loaded,
     ));
+
+    // Plan 03-06: spawn the filesystem watcher BEFORE bind so the OS thread
+    // is live for the entire serving lifetime. Failure to start the watcher
+    // (e.g. .watch() returns Err because the kernel parent dir is not
+    // readable) is fatal — the operator wants the diagnostic up front,
+    // not a silent loss of live-reload after the listener is already bound.
+    crate::watcher::spawn_watcher(state.clone())
+        .context("watcher init failed")?;
+
     let app = build_router(state);
 
     // Parse host as IpAddr first so IPv6 literals like `::1` work — naive

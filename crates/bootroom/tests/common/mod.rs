@@ -54,3 +54,70 @@ pub fn write_kernel_tempfile(bytes: &[u8]) -> tempfile::NamedTempFile {
     f.write_all(bytes).expect("write");
     f
 }
+
+/// A minimal 64-byte ELF stub: magic + zero padding. Enough to pass the
+/// watcher's first-4-bytes ELF magic gate. The size-stability gate also
+/// passes because the file is written atomically in one `fs::write` call.
+pub const ELF_STUB_64: [u8; 64] = {
+    let mut out = [0u8; 64];
+    out[0] = 0x7f;
+    out[1] = b'E';
+    out[2] = b'L';
+    out[3] = b'F';
+    out
+};
+
+/// Trivial valid `bootroom.toml` content with one action. The watcher
+/// integration tests start from this and then rewrite to exercise
+/// reload paths.
+pub const INITIAL_TOML: &str = "schema_version = 1\n\n\
+    [[action]]\n\
+    label = \"reboot\"\n\
+    bytes = 'reboot\\r'\n";
+
+/// Set up a fresh `AppState` for watcher integration tests.
+///
+/// Returns `(state, _temp_guard, kernel_path, config_path)`.
+///
+/// - Kernel file is initialized with `ELF_STUB_64` so the watcher's
+///   initial scan would (if it ran) see a valid kernel.
+/// - Config file is initialized with `INITIAL_TOML` (one action: reboot).
+/// - Paths are canonicalized (the live `server::run` canonicalize step is
+///   what the watcher relies on for path demux; we mirror it here).
+///
+/// The `TempDir` guard MUST be held by the caller for the duration of
+/// the test — dropping it deletes the kernel + config files on disk
+/// and the watcher will fire spurious Remove events.
+pub fn spawn_watcher_test_setup() -> (
+    std::sync::Arc<bootroom::AppState>,
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
+    use bootroom_core::config::LoadedConfig;
+    use std::sync::Arc;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let kernel_path = tmp.path().join("Image");
+    let config_path = tmp.path().join("bootroom.toml");
+
+    std::fs::write(&kernel_path, ELF_STUB_64).expect("write kernel stub");
+    std::fs::write(&config_path, INITIAL_TOML).expect("write initial toml");
+
+    let kernel_canon = std::fs::canonicalize(&kernel_path).expect("canonicalize kernel");
+    let config_path_canon =
+        std::fs::canonicalize(&config_path).expect("canonicalize config");
+
+    let loaded = LoadedConfig::load_from_str(INITIAL_TOML).expect("load initial");
+
+    let state = Arc::new(bootroom::AppState::new(
+        kernel_path.clone(),
+        kernel_canon,
+        None, // assets_dir
+        config_path.clone(),
+        config_path_canon,
+        loaded,
+    ));
+
+    (state, tmp, kernel_path, config_path)
+}

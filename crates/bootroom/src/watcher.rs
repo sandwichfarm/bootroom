@@ -52,7 +52,7 @@
 //! The watcher computes its own SHA-256 of the kernel rather than going
 //! through `digest_cache`. RESEARCH calls this out: keeping `digest_cache`
 //! as a single-writer path (only `/api/kernel/info` writes; the watcher
-//! reads its own file) avoids a two-writer race on the same Arc<RwLock<_>>.
+//! reads its own file) avoids a two-writer race on the same `Arc<RwLock<_>>`.
 //! The cost is a duplicate hash of the kernel per rebuild — kernel reads
 //! are infrequent and the file is the operator's chosen artifact, so this
 //! is accepted (threat T-03-06-07).
@@ -81,7 +81,7 @@ const DEBOUNCE_WINDOW: Duration = Duration::from_millis(300);
 
 /// Inner-check window for kernel size stability. RESEARCH Pitfall #4
 /// (Assumption A3): a partial-write race during `make` linking can see
-/// the kernel grow between the first metadata() and the read. We sleep
+/// the kernel grow between the first `metadata()` and the read. We sleep
 /// 100ms and re-check size; if it changed, defer to the next debounce
 /// tick.
 const SIZE_STABILITY_WINDOW: Duration = Duration::from_millis(100);
@@ -152,6 +152,10 @@ pub fn project_loaded_to_json(loaded: &LoadedConfig) -> Value {
 /// - The kernel canonical path has no file name.
 /// - `new_debouncer` fails to start its OS thread.
 /// - Either `.watch(...)` call fails (path does not exist, permissions, etc.).
+// `state` is consumed: we clone it once into the leaked debouncer closure
+// (which outlives this call) and once for the `info!` log. Taking `&Arc`
+// would force every caller to clone explicitly at the call site.
+#[allow(clippy::needless_pass_by_value)]
 pub fn spawn_watcher(state: Arc<AppState>) -> anyhow::Result<()> {
     let kernel_parent: std::path::PathBuf = state
         .kernel_canon
