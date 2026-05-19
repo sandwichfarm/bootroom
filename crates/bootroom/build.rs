@@ -19,13 +19,22 @@ const REQUIRED: &[&str] = &[
     "assets/qemu/out.js",
     "assets/qemu/load.js",
     "assets/qemu/module.js",
+    // CR-01: qemu-wasm-rev.txt is rewritten on every `make qemu-assets`
+    // run (Makefile L68: `git -C $(QEMU_WASM_DIR) rev-parse --short HEAD
+    // > $(QEMU_OUT_DIR)/qemu-wasm-rev.txt`). Without an explicit per-file
+    // rerun-if-changed watch, editing it in place would NOT retrigger the
+    // include_dir!() embed and `bootroom doctor` would report a stale
+    // qemu_wasm_rev value. The directory-level watch alone does not catch
+    // in-place edits on most filesystems — same reason the rest of these
+    // files are listed.
+    "assets/qemu/qemu-wasm-rev.txt",
 ];
 
 fn main() {
-    // WR-04: emit one rerun-if-changed per required file. The previous
-    // directory-only watch (`cargo:rerun-if-changed=assets/qemu`) only
-    // fires on entry add/remove on most filesystems; editing a file in
-    // place (e.g. updating module.js, or `cp`-overwriting the .wasm
+    // WR-04 (Phase 1): emit one rerun-if-changed per required file. The
+    // previous directory-only watch (`cargo:rerun-if-changed=assets/qemu`)
+    // only fires on entry add/remove on most filesystems; editing a file
+    // in place (e.g. updating module.js, or `cp`-overwriting the .wasm
     // without `rm` first) did NOT trigger a rebuild and the binary
     // ended up with stale embedded bytes.
     for rel in REQUIRED {
@@ -43,6 +52,35 @@ fn main() {
     println!("cargo:rerun-if-changed=web");
     // Re-run whenever the escape-hatch env var flips.
     println!("cargo:rerun-if-env-changed=BOOTROOM_SKIP_QEMU_ASSET_CHECK");
+
+    // BL-01: capture BOOTROOM_GIT_SHA *before* any possible early return.
+    // `doctor_cmd.rs` uses `env!("BOOTROOM_GIT_SHA")` (a compile-time
+    // lookup that errors out if the var is unset), so the SHA emission
+    // must happen on every code path through build.rs — including the
+    // BOOTROOM_SKIP_QEMU_ASSET_CHECK=1 dev bypass. Previously the SHA
+    // capture lived below the early-return at L51, which silently broke
+    // the documented dev workflow ("iterating on unrelated crate code
+    // before the qemu artifacts have been built").
+    //
+    // The chain below tolerates: (a) git not on PATH, (b) git running
+    // but no repo, (c) detached/missing HEAD. None of these may panic
+    // or abort the build (D-DOC-04 + Research Pattern 3). Never
+    // `.unwrap()` on the git invocation.
+    let sha = std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=BOOTROOM_GIT_SHA={sha}");
+    // Invalidate on commit / checkout (HEAD moves) and on branch updates
+    // (refs/ subtree changes). Together these cover the cases where the
+    // captured SHA would otherwise go stale across a rebuild.
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs");
 
     if std::env::var("BOOTROOM_SKIP_QEMU_ASSET_CHECK").is_ok() {
         println!(
@@ -68,28 +106,4 @@ fn main() {
             std::process::exit(1);
         }
     }
-
-    // Plan 05-01: capture `git rev-parse --short HEAD` into BOOTROOM_GIT_SHA
-    // so the runtime `doctor` check (plan 05-04) can read it via env!().
-    // Must be captured at build time because `cargo install bootroom` from
-    // crates.io ships without `.git/` — a runtime `git rev-parse` would
-    // fail. The chain below tolerates: (a) git not on PATH, (b) git
-    // running but no repo, (c) detached/missing HEAD. None of these may
-    // panic or abort the build (D-DOC-04 + Research Pattern 3). Never
-    // `.unwrap()` on the git invocation.
-    let sha = std::process::Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "unknown".to_string());
-    println!("cargo:rustc-env=BOOTROOM_GIT_SHA={sha}");
-    // Invalidate on commit / checkout (HEAD moves) and on branch updates
-    // (refs/ subtree changes). Together these cover the cases where the
-    // captured SHA would otherwise go stale across a rebuild.
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs");
 }
