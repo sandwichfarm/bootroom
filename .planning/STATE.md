@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: "Plan 03-03 complete (CLI subcommand skeleton: Cmd::{Serve,Check,Init} + --config/--action). Plans complete: 01, 02, 03, 09, 10. 03-05 in flight (state.rs/server.rs/tests/common). Next non-blocking plans: 04 (real check/init handlers), 06, 07, 08, 11."
-last_updated: "2026-05-19T09:15:06.112Z"
+last_updated: "2026-05-19T09:20:09.808Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 26
-  completed_plans: 20
-  percent: 77
+  completed_plans: 21
+  percent: 81
 ---
 
 # State: bootroom
@@ -73,6 +73,7 @@ Carried from `PROJECT.md` Key Decisions:
 - [Phase ?]: [Phase 3]: 03-10: Funnel lock primitive shipped (ACT-04) — Funnel.locked flag + idempotent lockInput/unlockInput methods + module-level setLockObserver export (with non-function-fallback + try/catch isolation per T-03-10-01). enqueue + #drain unchanged: server-initiated SerialIn must keep flowing during scenario lock, so enforcement is at the caller (Plan 11 wires xterm.onData + .action-btn guards and the BUSY pill observer). 6th DevTools manual-test case added to funnel.js for UI-SPEC Interaction Contract 9. Commits 57bff45 + 18ff166 (corrective revert of pre-staged style.css).
 - [Phase 3]: 03-01: bootroom-core gains the canonical TOML schema + escape decoder (executed retroactively after 03-09/03-10/03-02 due to out-of-order parallel work). escape.rs (decode_bytes_escape + EscapeError) handles \r\n\t\0\\\xNN with byte-offset error positions (11 tests). config.rs ships Config/Action/Scenario/Assertion/AssertionKind with #[serde(deny_unknown_fields)] on every struct, LoadedConfig + ResolvedAction projection, CliAction (--action runtime value), LoadError struct with private kind enum + public predicates is_schema_version_mismatch/actual_version, parse_str + offset_to_line_col using prefix.chars().count() for Unicode-scalar columns (matches vim/code jump-to-line). CLI override merge = dedupe-replace by label: existing TOML entry kept at its index, new label appended, last --action wins among CLI-only collisions, group+description cleared when shadowing existing TOML action. 11 unit tests cover CFG-02..06 + ACT-03 override semantics + duplicate-label rejection. Also fixed cross-plan blocker in crates/bootroom/src/ws.rs handle_wire match arm to cover 3 new server-owned WsMessage variants (KernelChanged/ConfigUpdate/ConfigInvalid) added by parallel 03-02 — same warn-and-continue posture as State/Hello. workspace deps (toml=1.1, notify=8, notify-debouncer-full=0.7) already in HEAD via 06b9253. 34 tests green; cargo clippy --workspace --lib --tests -- -D warnings clean. Commits ba8b78f (escape) + 47b7d90 (config + ws.rs fix). CFG-02..06 + ACT-03 unit-test surface satisfied; Pitfall #5/#8 structurally mitigated (one parser shared by all downstream consumers).
 - [Phase ?]: [Phase 3]: 03-03: CLI subcommand surface landed — Cmd::{Serve, Check, Init} with Serve first variant (Pitfall #9), ServeArgs extended with --config + repeatable --action (clap value_parser=parse_cli_action, delegating to bootroom_core::decode_bytes_escape — one parser, zero CLI-vs-TOML drift). main.rs dispatches Check->exit(2)/Init->exit(1) stubs; Plan 04 replaces. New tests/cli_subcommands.rs pins 6 help-text + stub-exit assertions (avoids tests/common/mod.rs to dodge Plan 03-05 collision). Pitfall #9 cleared — tests/serve_no_open.rs still green. Commits 15acae4 (cli) + ee76ad5 (dispatch+tests).
+- [Phase ?]: [Phase 3]: 03-05: AppState extended with kernel_canon + config_path + config_path_canon + Arc<RwLock<LoadedConfig>> + broadcast::Sender<WsMessage>(16). server::run preflights config + canonicalize BEFORE bind; initial-load failure FATAL. new_for_test compat shim keeps Phase-2 tests intact. 5 state tests + 2 server tests + serve_no_open.rs --config adjustment. Commits 854a52a + 2851056.
 
 ### Architecture (from research)
 
@@ -107,7 +108,7 @@ Spikes A and B are de-risking activities for Phase 1, not external blockers.
 
 ## Session Continuity
 
-- **Last session:** 2026-05-19T09:15:06.104Z
+- **Last session:** 2026-05-19T09:19:54.817Z
 - **Stopped at:** Plan 03-03 complete (CLI subcommand skeleton: Cmd::{Serve,Check,Init} + --config/--action). Plans complete: 01, 02, 03, 09, 10. 03-05 in flight (state.rs/server.rs/tests/common). Next non-blocking plans: 04 (real check/init handlers), 06, 07, 08, 11.
 - **Next session:** Run Phase 2 verifier (`/gsd-verify-phase 02`) for outer-loop check, then plan Phase 3 via `/gsd-plan-phase 3`. Phase 3 is the headless `bootroom run --scenario …` driver (chromiumoxide-based per Spike B verdict); Phase 2's WS protocol round-trip and SerialOut mirror give Phase 3 a ready-made assertion-capture hook.
 - **Context to reload for Phase 3 planning:** `.planning/ROADMAP.md` (Phase 3 scope), `.planning/phases/01-foundation/01-08-SUMMARY.md` + `SPIKE-B-RESULT.md` (chromiumoxide verdict + headless boot proof), `crates/bootroom/spikes/spike-b/` (working spike code), `crates/bootroom-core/src/lib.rs` (`WsMessage` + `GuestState` — Phase 3 reuses the enum unchanged), `.planning/phases/02-websocket-live-serial/02-06-SUMMARY.md` (browser-side WS lifecycle + SerialOut mirror Phase 3 will consume server-side).
