@@ -7,6 +7,7 @@ pub mod check_cmd;
 pub mod cli;
 pub mod embed;
 pub mod headers;
+pub mod init_cmd;
 pub mod kernel_info;
 pub mod kernel_stream;
 pub mod server;

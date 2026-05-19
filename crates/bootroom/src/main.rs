@@ -21,11 +21,6 @@ async fn main() -> anyhow::Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Check(args) => Ok(bootroom::check_cmd::run(args)),
-        Cmd::Init(args) => {
-            // Plan 04 Task 2 wires the real init handler; placeholder
-            // until then so the bin still builds during Task 1 work.
-            let _ = args;
-            Ok(ExitCode::from(1))
-        }
+        Cmd::Init(args) => Ok(bootroom::init_cmd::run(&args)),
     }
 }

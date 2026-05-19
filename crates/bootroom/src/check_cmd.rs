@@ -10,7 +10,7 @@
 //! |------|----------------------------------------|-----------------------------------------------------------------|
 //! | 0    | TOML parses + cross-validates          | stdout: `<file>: ok (N actions, M scenarios)`                   |
 //! | 1    | TOML parse error or validation failure | stderr: `<file>[:line:col]: <message>`                          |
-//! | 2    | Config file not found / read error     | stderr: `<file>: file not found` (NotFound) or `<file>: <io>`   |
+//! | 2    | Config file not found / read error     | stderr: `<file>: file not found` (`NotFound`) or `<file>: <io>` |
 //! | 3    | `schema_version` mismatch              | stderr: `<file>: schema_version mismatch (expected 1, got N)`   |
 //!
 //! The schema-mismatch case is formatted from the typed
