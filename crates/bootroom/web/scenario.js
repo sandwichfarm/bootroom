@@ -194,9 +194,20 @@ function evaluate(rawChunks, assertion, atTimeout) {
   const raw = decodeChunks(rawChunks);
   const stripped = stripAnsi(raw);
   const lastNl = stripped.lastIndexOf('\n');
-  const matchTarget = (atTimeout || lastNl === -1)
-    ? stripped
-    : stripped.slice(0, lastNl + 1);
+  // BL-01 fix: when `atTimeout === false` AND no `\n` has arrived yet,
+  // the previous behaviour matched against the FULL partial buffer.
+  // Per RUN-05, partial-line matching is allowed ONLY at the per-action
+  // timeout. Without a complete line we therefore have nothing eligible
+  // to match — return an empty target so contains/regex assertions
+  // wait for either a newline or the timeout escape hatch.
+  let matchTarget;
+  if (atTimeout) {
+    matchTarget = stripped;
+  } else if (lastNl === -1) {
+    matchTarget = '';
+  } else {
+    matchTarget = stripped.slice(0, lastNl + 1);
+  }
   if (assertion.kind === 'contains') {
     return matchTarget.includes(assertion.pattern);
   }
