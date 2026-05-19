@@ -131,7 +131,15 @@ Plans:
   1. The full top-level subcommand set is finalized: `serve`, `run`, `init`, `check`, `doctor`, plus `--version` and `--help` — all short verbs, all discoverable via `bootroom --help`.
   2. `bootroom doctor` reports bootroom version, embedded qemu-wasm submodule rev, detected browser (Chrome/Chromium path + version), the COOP/COEP self-check against a live `/` request, and current `bootroom.toml` validity.
   3. `doctor` exits 0 when all checks pass and non-zero with a structured summary when any check fails — usable directly in CI preflight steps.
-**Plans:** TBD
+**Plans:** 6 plans
+Plans:
+- [ ] 05-PLAN.md — Plan-set overview, dependency graph, wave structure, source-audit, glyph deviation
+- [ ] 05-01-PLAN.md — build.rs BOOTROOM_GIT_SHA capture with "unknown" fallback + Wave-0 env-presence test (DOC-01)
+- [ ] 05-02-PLAN.md — Makefile qemu-assets writes qemu-wasm-rev.txt + committed sentinel for include_dir embed (DOC-01)
+- [ ] 05-03-PLAN.md — CLI surface: Cmd::Doctor(DoctorArgs) + OutputFormat + main.rs dispatch + tower util dep + discover_chromium pub(crate) + stub doctor_cmd::run (CLI-01, DOC-01)
+- [ ] 05-04-PLAN.md — doctor_cmd.rs full body: 6 checks + human/json formatters + stderr summary + ASCII glyph deviation + verbose.rs GLYPH_INFO (DOC-01)
+- [ ] 05-05-PLAN.md — Doctor integration tests: subcommand, exit codes, human format, JSON schema pin, in-process headers self-check (DOC-01)
+- [ ] 05-06-PLAN.md — CLI doc-string audit + five-subcommand --help regression test (CLI-01)
 
 ### Phase 6: Distribution
 **Goal:** A kernel project on any supported platform (Linux x86_64/aarch64-musl, macOS x86_64/aarch64) installs `bootroom` in one step — `cargo install bootroom`, `cargo binstall bootroom`, or a `curl | tar -xz` from a GitHub Release — and runs it from any working directory with no in-repo assumptions.
