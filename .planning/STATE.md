@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: paused
-stopped_at: "Phase 3 fully closed (impl + code review fixes + verification + UI audit). All 11 plans complete, 100+ tests green, 3 critical review findings (WS deadlock CR-01, missing Origin gate CR-02, watcher inotify orphan CR-03) and 6 warning findings fixed with regression tests; 1 latent UI bug noted (fresh-banner dismiss not durable across resolveBanners re-runs — UI-REVIEW.md 9f65073). Verification 15/19 (4 human-needed items deferred — require qemu-wasm + headed browser). Pausing before Phase 4 (Scenario Engine + Headless `run`) to preserve context window for the next autonomous run. Resume with: /gsd-autonomous --from 4"
-last_updated: "2026-05-19T11:05:34.670Z"
+status: executing
+stopped_at: "Phase 3 implementation COMPLETE. All 11 Phase-3 plans executed (01 schema/escape, 02 WsMessage variants, 03 CLI surface, 04 check/init commands, 05 AppState extension, 06 watcher, 07 /api/config, 08 WS broadcast forwarder, 09 DOM/CSS, 10 funnel lock primitive, 11 app.js browser-side state machine). Plan 03-11 is commit 621aa2a (332 net new LOC in `crates/bootroom/web/app.js`). All automated gates green: 10 grep gates + `node --check` + `cargo test -p bootroom` 100/100 across 23 test suites. innerHTML count preserved at the Phase-1+2 baseline of 2 (T-03-11-01 XSS-mitigation gate). Headed-browser smoke (Plan 11 Task 2 `checkpoint:human-verify`, 9 verification steps spanning ACT-01/02/04 + CFG-09/10 + WCH-04/05 + banner-ladder + Phase-2 preservation) DEFERRED — autonomous-mode execution had no human in the loop, and qemu-wasm assets are not present (Phase-1 blocker 01-02 still open: docker build for qemu-wasm needs ≥10G free disk; host was at 98%)."
+last_updated: "2026-05-19T13:55:15.417Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 26
+  total_plans: 38
   completed_plans: 26
-  percent: 50
+  percent: 68
 ---
 
 # State: bootroom
@@ -23,16 +23,16 @@ progress:
 
 **Core Value:** Press one button, get the freshest kernel running in a browser with a click-to-trigger scenario library. If everything else fails, that one path must stay friction-free.
 
-**Current Focus:** Phase 03 — Config, Buttons, Watcher
+**Current Focus:** Phase 04 — Scenario Engine + Headless run
 
 ## Current Position
 
-Phase: 03 — COMPLETE
-Plan: 11 of 11 — COMPLETE
+Phase: 04 (Scenario Engine + Headless run) — EXECUTING
+Plan: 1 of 11
 
 - **Phase:** 3 — Config, Buttons, Watcher — IMPLEMENTATION COMPLETE; headed-browser smoke (Plan 11 Task 2 checkpoint:human-verify) deferred to next interactive session; `/gsd-verify-phase 03` pending.
 - **Plan:** 03-11 complete — Phase 3 browser-side state machine wired in `crates/bootroom/web/app.js` (332 net new LOC, commit 621aa2a). Adds `renderActionButtons` (Map-keyed first-seen group order; ungrouped final group; `replaceChildren` re-render), delegated `#actions-panel` click handler (lock-aware short-circuit + `funnel.enqueue` at pacingMs=15), `resolveBanners()` enforcing UI-SPEC iso > config-invalid > kernel-fresh ladder, `renderConfigBanner` + `renderFreshBanner` (textContent-only banner content per T-03-11-01; baseline `innerHTML` count preserved at 2), `initialConfigLoad()` fired from WS Hello handler (post-WS-open timing avoids ConfigUpdate race), three new `handleWsFrame` branches (ConfigUpdate/ConfigInvalid/KernelChanged) with try/catch per T-02-24 pattern, `triggerLaunch()` extracted module-level (shared by header LAUNCH + inline fresh-banner LAUNCH), `setLockObserver(...)` wired to flip pill to BUSY + add `disabled` to every `.action-btn` on lock=true and reverse on unlock, caller-side lock guards on `xterm.onData` / `xterm.onBinary` / action-btn click delegate (funnel.enqueue itself stays lock-agnostic so server-initiated `SerialIn` frames keep flowing during Phase-4 scenario execution). All 10 grep gates green: renderActionButtons=4, resolveBanners=6, funnel.locked=7, setLockObserver=2, three new frame types each present, fetch('/api/config') present, innerHTML count=2 (baseline preserved). `node --check` clean; `cargo test -p bootroom` 100/100 across 23 test suites. Phase-2 surfaces (header LAUNCH/RESET/CLEAR/COPY, kernel-info, WS lifecycle for Hello/SerialIn/State, SerialOut mirror, pill state machine, WR-01 vendor guard, WR-08 FS_unlink ENOENT-only catch) preserved unchanged. Headed-browser smoke (Task 2 checkpoint:human-verify covering action-button render, click-to-bytes, live TOML reload, red config-invalid banner, fresh-kernel banner show/dismiss/LAUNCH, non-ELF warning variant, DevTools funnel.lockInput() smoke, banner priority ladder collisions, Phase-2 preservation) DEFERRED to next interactive session — autonomous-mode execution + qemu-wasm assets not present (Phase-1 blocker 01-02 still open). All 19 Phase 3 requirements have implementation coverage; visual sign-off pending the smoke.
-- **Status:** Phase 03 complete
+- **Status:** Executing Phase 04
 - **Phase:** 2 — WebSocket + Live Serial — COMPLETE
 - **Plan (prior):** 02-06 complete — `crates/bootroom/web/app.js` refactored end-to-end: imports `Funnel`, `bytesToB64`, `b64ToBytes`, `keyEventToBytes` from `./funnel.js`; constructs one `Funnel(slave)` as sole writer to `slave.write` during normal byte flow (WS-02); installs intercepting `attachCustomKeyEventHandler` returning `false` to suppress xterm's default `master.onData` dispatch (Pitfall #1 mitigation) and route bytes through funnel with `pacingMs: 0`. WS `/ws` lifecycle: `connectWs()` parses Hello (info terminal write), SerialIn (b64 -> funnel.enqueue with configurable `pacingMs`), State (uppercased to override local pill via `serverStateAuthority`); naive 1s reconnect on close (T-02-25 accept). SerialOut mirror via `slave.onReadable` -> `ws.send({type:'SerialOut',data:<b64>})` when WS open — also the trigger for LOADING -> RUNNING. 4-state pill machine (Pattern 5): IDLE (explicit at startup) -> LOADING (after `xterm.open`) -> RUNNING (`runtimeInitialized && firstSerialOutSeen` via `recomputePillLocal`) -> HALTED (Module.onExit/onAbort, clearing `serverStateAuthority`). LAUNCH/RESET = best-effort WS send + `requestAnimationFrame` + `window.location.reload()` (D-02 identical mechanism, visually distinct). CLEAR = `xterm.clear()`. COPY = selection-or-`xterm.buffer.active.translateToString(true, 0, length)` (Pitfall #5) with COPIED/COPY FAILED 1500ms flash + `[bootroom] Copy failed` terminal diagnostic on failure (T-02-29 audit trail). `?pacing=N` URL param clamped to `>= 0`, default 15ms (WS-03). 525 LOC total / 297 non-comment LOC — under plan's 350-LOC factor-out threshold; single-file preserved per Phase 1 norm. Phase 1 surface preserved unchanged: `humanBytes` (WR-07), `isoLocal`, `loadKernelInfo`, vendor-globals guard (WR-01), `FS_unlink` ENOENT-only catch (WR-08), `FS_createDataFile` swap, `Module.TTY.stream_ops.poll` patch, resize handler + rAF fits. All 12 grep gates + `node --check` + `cargo test --workspace` green on first commit. Commit 6b77b30. UI-02/03/04/06/08/09 + WS-02/03 satisfied.
 - **Status:** Executing Phase 03
