@@ -41,6 +41,29 @@ pub enum WsMessage {
     /// Server -> client on connect. `version` is the server's
     /// `CARGO_PKG_VERSION`. Mismatched clients log a warning but proceed.
     Hello { version: String },
+    /// Server -> client. Watcher detected a kernel rebuild. `ok=true` means
+    /// size-stability and ELF magic both passed; `ok=false` carries `reason`
+    /// (e.g., `"not ELF"`). The browser shows a non-intrusive banner; Launch
+    /// is user-initiated. WCH-05.
+    KernelChanged {
+        ok: bool,
+        mtime: i64,
+        size: u64,
+        sha256_prefix: String,
+        reason: Option<String>,
+    },
+    /// Server -> client. `bootroom.toml` was edited and re-parsed
+    /// successfully. `config` is the same JSON projection `/api/config`
+    /// returns. CFG-10.
+    ConfigUpdate { config: serde_json::Value },
+    /// Server -> client. `bootroom.toml` was edited but re-parse failed.
+    /// The last-known-good config remains active. `line`/`col` are 1-based
+    /// when the error has a TOML span. CFG-10.
+    ConfigInvalid {
+        error: String,
+        line: Option<u32>,
+        col: Option<u32>,
+    },
 }
 
 /// Status pill state machine. Default serde representation: bare string
@@ -122,5 +145,89 @@ mod tests {
         };
         let cloned = m.clone();
         assert_eq!(m, cloned);
+    }
+
+    #[test]
+    fn kernel_changed_ok_true_roundtrip() {
+        let m = WsMessage::KernelChanged {
+            ok: true,
+            mtime: 1_715_000_000,
+            size: 12_345_678,
+            sha256_prefix: "abc123def456".into(),
+            reason: None,
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+        // Spot-check wire shape — type tag + field presence.
+        assert!(s.contains(r#""type":"KernelChanged""#), "got: {s}");
+        assert!(s.contains(r#""ok":true"#), "got: {s}");
+        assert!(s.contains(r#""reason":null"#), "got: {s}");
+    }
+
+    #[test]
+    fn kernel_changed_ok_false_with_reason_roundtrip() {
+        let m = WsMessage::KernelChanged {
+            ok: false,
+            mtime: 0,
+            size: 0,
+            sha256_prefix: String::new(),
+            reason: Some("not ELF".into()),
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+        assert!(s.contains(r#""reason":"not ELF""#), "got: {s}");
+    }
+
+    #[test]
+    fn config_update_carries_opaque_value() {
+        let m = WsMessage::ConfigUpdate {
+            config: serde_json::json!({ "schema_version": 1, "actions": [] }),
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
+        assert!(s.contains(r#""type":"ConfigUpdate""#), "got: {s}");
+    }
+
+    #[test]
+    fn config_invalid_with_and_without_span() {
+        let with_span = WsMessage::ConfigInvalid {
+            error: "unknown field 'lable'".into(),
+            line: Some(12),
+            col: Some(1),
+        };
+        let s = serde_json::to_string(&with_span).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, with_span);
+        assert!(s.contains(r#""line":12"#), "got: {s}");
+        assert!(s.contains(r#""col":1"#), "got: {s}");
+
+        let without_span = WsMessage::ConfigInvalid {
+            error: "permission denied".into(),
+            line: None,
+            col: None,
+        };
+        let s = serde_json::to_string(&without_span).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, without_span);
+        assert!(s.contains(r#""line":null"#), "got: {s}");
+        assert!(s.contains(r#""col":null"#), "got: {s}");
+    }
+
+    #[test]
+    fn large_mtime_survives_i64() {
+        // Pitfall #8 (03-RESEARCH): millennium-scale Unix epoch survives i64.
+        let m = WsMessage::KernelChanged {
+            ok: true,
+            mtime: 9_999_999_999_999_i64,
+            size: u64::MAX,
+            sha256_prefix: "deadbeefcafe".into(),
+            reason: None,
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WsMessage = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, m);
     }
 }

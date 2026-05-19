@@ -10,10 +10,8 @@ description = "Pure types and protocol definitions for bootroom (no I/O)."
 
 [dependencies]
 serde = { workspace = true }
-toml = { workspace = true }
-
-[dev-dependencies]
 serde_json = { workspace = true }
+toml = { workspace = true }
 
 [lints.rust]
 unsafe_code = "forbid"
