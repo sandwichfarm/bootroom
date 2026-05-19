@@ -20,6 +20,9 @@ path = "src/main.rs"
 [dependencies]
 bootroom-core.workspace = true
 anyhow.workspace = true
+chromiumoxide = { workspace = true }
+futures = { workspace = true }
+regex = { workspace = true }
 clap.workspace = true
 axum = { workspace = true, features = ["ws"] }
 # Phase 3: base64 re-enabled — the watcher (plan 03-06) needs to encode
