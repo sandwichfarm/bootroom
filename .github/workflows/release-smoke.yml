@@ -109,3 +109,33 @@ jobs:
               BOOTROOM_INSTALL_SMOKE_BIN=/usr/local/bin/bootroom \
                 cargo test --test install_smoke -p bootroom -- --ignored --nocapture
             '
+
+      # DIST-05 explicit gate: run the path-independence test in isolation
+      # with maximum verbose output. Catches regressions in [package].include
+      # (06-02) and include_dir! reachability. A failure here means an
+      # embedded asset did not survive the package -> install round trip.
+      #
+      # This step duplicates infrastructure with the prior "install_smoke
+      # integration tests" step (apk add, cargo install) on purpose: the
+      # prior step's failure surface is "one of several tests failed";
+      # THIS step's failure surface is "DIST-05 specifically failed". A
+      # maintainer reading the failed-job summary sees a step name that
+      # directly references the requirement ID.
+      - name: DIST-05 path-independence check
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace:ro" \
+            -w /tmp \
+            rust:1.85-alpine \
+            sh -euxc '
+              apk add --no-cache musl-dev gcc git
+              mkdir -p /work
+              tar -xzf /workspace/target/package/bootroom-core-*.crate -C /work
+              tar -xzf /workspace/target/package/bootroom-*.crate -C /work
+              cargo install --locked --path /work/bootroom-* --root /usr/local
+              cd /workspace
+              BOOTROOM_INSTALL_SMOKE_BIN=/usr/local/bin/bootroom \
+                cargo test --test install_smoke -p bootroom \
+                  path_independence_qemu_wasm_rev_present \
+                  -- --ignored --nocapture
+            '
