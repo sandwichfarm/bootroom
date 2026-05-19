@@ -13,6 +13,7 @@ pub mod kernel_info;
 pub mod kernel_stream;
 pub mod server;
 pub mod state;
+pub mod transcript;
 pub mod watcher;
 pub mod ws;
 
