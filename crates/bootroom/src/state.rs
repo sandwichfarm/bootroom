@@ -2,7 +2,7 @@
 
 use bootroom_core::{WsMessage, config::LoadedConfig};
 use std::{path::PathBuf, sync::Arc};
-use tokio::sync::broadcast;
+use tokio::sync::{Mutex as AsyncMutex, broadcast, oneshot};
 
 /// WR-03: cached SHA-256 digest keyed by file identity. The kernel is
 /// re-hashed only when `(size, mtime_sec)` changes. Phase 3's watcher
@@ -81,6 +81,25 @@ pub struct AppState {
     /// without going through `server::run` (those tests do not hit
     /// `ws_handler`).
     pub allowed_origins: Vec<String>,
+    /// Phase 4 RUN-01: when `bootroom run` is the active dispatch,
+    /// this slot holds a `oneshot::Sender<WsMessage>` awaited by
+    /// `run_cmd::run`. The WS handler (04-05) fills it via
+    /// `take_scenario_result_tx()` when it receives a `ScenarioResult`
+    /// frame. `Arc<AsyncMutex<Option<_>>>` because `oneshot::Sender::send`
+    /// consumes the sender by value; the `Option::take` lets the WS
+    /// handler hand ownership to the `send()` call inside one
+    /// critical section.
+    ///
+    /// `serve` mode leaves this `None` (the option is never
+    /// installed); a `ScenarioResult` arriving in serve mode is
+    /// logged-and-ignored by the handler (warn).
+    ///
+    /// Contract: one scenario per invocation. A second
+    /// `install_scenario_oneshot()` REPLACES (and drops) the prior
+    /// sender; the prior receiver yields `RecvError`. `bootroom run`
+    /// installs exactly once and shuts down before any client could
+    /// trigger a second install.
+    pub scenario_result_tx: Arc<AsyncMutex<Option<oneshot::Sender<WsMessage>>>>,
 }
 
 impl AppState {
@@ -112,6 +131,7 @@ impl AppState {
             loaded_config: Arc::new(tokio::sync::RwLock::new(loaded_config)),
             ws_broadcast,
             allowed_origins,
+            scenario_result_tx: Arc::new(AsyncMutex::new(None)),
         }
     }
 
@@ -182,6 +202,37 @@ impl AppState {
             Vec::new(),
         )
     }
+
+    /// Phase 4 RUN-01: install a fresh `oneshot::Sender<WsMessage>` for
+    /// the current scenario run, replacing any prior sender. Returns
+    /// the receiver the driver awaits.
+    ///
+    /// `bootroom run` (04-07) calls this exactly once, before launching
+    /// Chromium. `serve` mode never calls it.
+    ///
+    /// Contract: a second call REPLACES the prior sender — the prior
+    /// receiver will yield `RecvError`. This is the documented
+    /// "one-scenario-per-invocation" semantic.
+    pub async fn install_scenario_oneshot(&self) -> oneshot::Receiver<WsMessage> {
+        let (tx, rx) = oneshot::channel();
+        let mut guard = self.scenario_result_tx.lock().await;
+        *guard = Some(tx);
+        rx
+    }
+
+    /// Phase 4 RUN-01: take the installed `oneshot::Sender<WsMessage>`
+    /// out of the slot. Returns `Some(_)` exactly once after each
+    /// `install_scenario_oneshot()`; subsequent calls return `None`
+    /// until a new install.
+    ///
+    /// The WS handler (04-05) calls this when it receives a
+    /// `ScenarioResult` frame. In `serve` mode where no oneshot was
+    /// installed, returns `None` immediately (the handler then
+    /// warn-logs and continues).
+    pub async fn take_scenario_result_tx(&self) -> Option<oneshot::Sender<WsMessage>> {
+        let mut guard = self.scenario_result_tx.lock().await;
+        guard.take()
+    }
 }
 
 #[cfg(test)]
@@ -249,5 +300,88 @@ mod tests {
         let tmp = std::env::temp_dir();
         let s = AppState::new_for_test(PathBuf::from("/tmp/Image"), Some(tmp.clone()));
         assert!(s.assets_dir_canon.is_some());
+    }
+
+    // ---------------------------------------------------------------
+    // Phase 4 RUN-01: scenario_result_tx slot — install/take semantics.
+    // ---------------------------------------------------------------
+
+    /// A fresh `AppState` has no oneshot installed: `take` returns `None`.
+    #[tokio::test]
+    async fn scenario_oneshot_default_is_none() {
+        let s = AppState::new_for_test(PathBuf::from("/tmp/Image"), None);
+        assert!(s.take_scenario_result_tx().await.is_none());
+    }
+
+    /// After `install_scenario_oneshot`, the first `take` returns
+    /// `Some(tx)`, sending through it reaches the installed receiver,
+    /// and a second `take` returns `None` (take-once semantics).
+    #[tokio::test]
+    async fn scenario_oneshot_install_then_take_once() {
+        let s = AppState::new_for_test(PathBuf::from("/tmp/Image"), None);
+        let rx = s.install_scenario_oneshot().await;
+
+        let tx = s
+            .take_scenario_result_tx()
+            .await
+            .expect("first take after install must return Some");
+
+        // Second take returns None — take-once semantics.
+        assert!(
+            s.take_scenario_result_tx().await.is_none(),
+            "second take after install must return None"
+        );
+
+        // Sending through the taken tx must deliver to the installed rx.
+        tx.send(WsMessage::Launch).expect("send to live rx");
+        let got = rx.await.expect("rx awaits delivered message");
+        assert_eq!(got, WsMessage::Launch);
+    }
+
+    /// A second `install_scenario_oneshot` REPLACES (and drops) the
+    /// prior sender; the prior receiver yields `RecvError`. The newly
+    /// installed receiver still works.
+    #[tokio::test]
+    async fn scenario_oneshot_second_install_replaces_first() {
+        let s = AppState::new_for_test(PathBuf::from("/tmp/Image"), None);
+        let rx_first = s.install_scenario_oneshot().await;
+        let rx_second = s.install_scenario_oneshot().await;
+
+        // The first receiver's sender was dropped by the second install;
+        // awaiting it returns RecvError.
+        assert!(
+            rx_first.await.is_err(),
+            "first rx must error after second install drops its sender"
+        );
+
+        // The second receiver's sender is now in the slot — take and use it.
+        let tx = s
+            .take_scenario_result_tx()
+            .await
+            .expect("second install's tx is takeable");
+        tx.send(WsMessage::Reset).expect("send to second rx");
+        let got = rx_second.await.expect("second rx delivers");
+        assert_eq!(got, WsMessage::Reset);
+    }
+
+    /// `AppState: Clone` continues to hold and both clones share the
+    /// same underlying `Arc<Mutex<Option<_>>>`: installing via one
+    /// clone makes the slot takeable through the other.
+    #[tokio::test]
+    async fn appstate_clone_shares_scenario_oneshot_slot() {
+        let s1 = AppState::new_for_test(PathBuf::from("/tmp/Image"), None);
+        let s2 = s1.clone();
+        // Arc identity: both clones point at the same Mutex<Option<_>>.
+        assert!(Arc::ptr_eq(&s1.scenario_result_tx, &s2.scenario_result_tx));
+
+        // Install via s1, take via s2 — they share one slot.
+        let rx = s1.install_scenario_oneshot().await;
+        let tx = s2
+            .take_scenario_result_tx()
+            .await
+            .expect("take via cloned state must see installed tx");
+        tx.send(WsMessage::Launch).expect("send through cloned slot");
+        let got = rx.await.expect("rx delivers across clones");
+        assert_eq!(got, WsMessage::Launch);
     }
 }
