@@ -14,6 +14,8 @@ pub mod kernel_stream;
 pub mod run_cmd;
 pub mod server;
 pub mod state;
+pub mod transcript;
+pub mod verbose;
 pub mod watcher;
 pub mod ws;
 
