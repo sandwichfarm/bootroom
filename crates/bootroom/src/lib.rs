@@ -2,6 +2,7 @@
 //!
 //! The binary entrypoint lives in `main.rs`; everything reusable lives here.
 
+pub mod api_config;
 pub mod assets;
 pub mod check_cmd;
 pub mod cli;

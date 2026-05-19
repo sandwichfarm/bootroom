@@ -20,6 +20,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(crate::assets::serve_index))
         .route("/api/kernel/info", get(crate::kernel_info::kernel_info))
+        .route("/api/config", get(crate::api_config::api_config))
         .route("/kernel", get(crate::kernel_stream::kernel_stream))
         .route("/assets/{*path}", get(crate::assets::serve_asset))
         .route("/ws", axum::routing::any(crate::ws::ws_handler))
