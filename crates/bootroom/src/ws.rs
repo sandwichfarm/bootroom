@@ -157,7 +157,11 @@ async fn handle_wire(wire: WsMessage, _tx: &mpsc::Sender<WsMessage>, _state: &Ap
         WsMessage::Reset => {
             tracing::info!("client Reset");
         }
-        WsMessage::State { .. } | WsMessage::Hello { .. } => {
+        WsMessage::State { .. }
+        | WsMessage::Hello { .. }
+        | WsMessage::KernelChanged { .. }
+        | WsMessage::ConfigUpdate { .. }
+        | WsMessage::ConfigInvalid { .. } => {
             // Protocol error — these are server-owned message kinds.
             // Per CONTEXT.md `<deferred>` recovery posture, we log and
             // keep the connection up instead of disconnecting.

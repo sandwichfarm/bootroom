@@ -8,7 +8,12 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod config;
 pub mod escape;
+pub use config::{
+    parse_str, Action, Assertion, AssertionKind, CliAction, Config, LoadError, LoadedConfig,
+    ResolvedAction, Scenario,
+};
 pub use escape::{decode_bytes_escape, EscapeError};
 
 /// Wire-level message exchanged over the `/ws` endpoint.
