@@ -72,12 +72,33 @@ timeout_ms = 30000
 pub fn run(args: &InitArgs) -> ExitCode {
     let path = PathBuf::from("bootroom.toml");
 
-    if path.exists() && !args.force {
-        eprintln!("bootroom.toml already exists; pass --force to overwrite.");
-        return ExitCode::from(1);
-    }
+    // WR-04: close the TOCTOU window between `path.exists()` and the
+    // subsequent write. Two concurrent `bootroom init` processes
+    // could both pass a `!exists()` check and one would silently
+    // clobber the other. `create_new(true)` is atomic at the syscall
+    // level and returns `AlreadyExists` if a file appeared between
+    // the call and the `open`. With `--force` we deliberately
+    // overwrite, so the simpler `fs::write` (which truncates) is
+    // correct there.
+    let result = if args.force {
+        std::fs::write(&path, EXAMPLE)
+    } else {
+        use std::io::Write;
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut f) => f.write_all(EXAMPLE.as_bytes()),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                eprintln!("bootroom.toml already exists; pass --force to overwrite.");
+                return ExitCode::from(1);
+            }
+            Err(e) => Err(e),
+        }
+    };
 
-    match std::fs::write(&path, EXAMPLE) {
+    match result {
         Ok(()) => {
             println!("Wrote ./bootroom.toml");
             ExitCode::SUCCESS
