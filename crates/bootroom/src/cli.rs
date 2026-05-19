@@ -32,6 +32,11 @@ pub enum Cmd {
     /// Phase-2 subprocess test invocation shape (Pitfall #9 mitigation).
     Serve(ServeArgs),
 
+    /// Run a scenario headlessly under Chromium and exit with a CI-style
+    /// status code (RUN-01..10). Plan 04-07 fills in the driver body;
+    /// Plan 04-03 lands the surface so 04-04..06 build cleanly.
+    Run(RunArgs),
+
     /// Parse and validate bootroom.toml without starting the server.
     Check(CheckArgs),
 
@@ -39,11 +44,31 @@ pub enum Cmd {
     Init(InitArgs),
 }
 
+/// Common flags shared across `serve` and `run` (CLI-02).
+///
+/// Applied to each subcommand via `#[command(flatten)]`. The flags are
+/// rendered inline in each subcommand's `--help` output — there is no
+/// separate "common options" section.
 #[derive(Debug, Args, Clone)]
-pub struct ServeArgs {
+pub struct CommonArgs {
     /// Path to the kernel image to load into the guest.
     #[arg(long, value_name = "PATH")]
     pub kernel: PathBuf,
+
+    /// Path to bootroom.toml; default = ./bootroom.toml.
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+
+    /// Verbose progress output to stderr (`bootroom run` only; ignored
+    /// by `serve`).
+    #[arg(long, short = 'v')]
+    pub verbose: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ServeArgs {
+    #[command(flatten)]
+    pub common: CommonArgs,
 
     /// Address to bind the HTTP listener to.
     #[arg(long, default_value = "127.0.0.1")]
@@ -69,10 +94,6 @@ pub struct ServeArgs {
     #[arg(long)]
     pub no_open: bool,
 
-    /// Path to bootroom.toml; default = ./bootroom.toml.
-    #[arg(long, value_name = "PATH")]
-    pub config: Option<PathBuf>,
-
     /// Define an ad-hoc action without editing config. Format: 'label=BYTES'
     /// with C-style escapes (\r \n \t \0 \\ \xNN). Repeatable. Overrides
     /// config-file actions on label collision; last --action wins among
@@ -84,6 +105,26 @@ pub struct ServeArgs {
         value_parser = parse_cli_action,
     )]
     pub actions: Vec<CliAction>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RunArgs {
+    #[command(flatten)]
+    pub common: CommonArgs,
+
+    /// Name of the scenario in `bootroom.toml` to execute. Looked up
+    /// against the loaded config's `scenarios[].name` at startup; an
+    /// unknown name causes exit code 2 (config/CLI error) before
+    /// Chromium is launched.
+    #[arg(long, value_name = "NAME")]
+    pub scenario: String,
+
+    /// Write a full JSONL transcript to this path (RUN-08). Each line
+    /// is one event: scenario_start, action_send, serial_chunk,
+    /// assertion_result, scenario_result. Optional — when absent, the
+    /// transcript is discarded after exit-code translation.
+    #[arg(long, value_name = "PATH")]
+    pub log_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -445,12 +486,20 @@ mod tests {
 
     #[test]
     fn cli_help_lists_shared_flags_on_run() {
+        // clap's top-level `render_long_help` does NOT recurse into
+        // subcommands. To verify the shared `CommonArgs` flatten reaches
+        // `run`'s help-text (and the run-only `--scenario` / `--log-file`
+        // are present), render the `run` subcommand's long help directly.
         use clap::CommandFactory;
-        let help = Cli::command().render_long_help().to_string();
+        let mut cmd = Cli::command();
+        let run_cmd = cmd
+            .find_subcommand_mut("run")
+            .expect("`run` subcommand must exist");
+        let help = run_cmd.render_long_help().to_string();
         for needle in ["--kernel", "--config", "--verbose", "--scenario", "--log-file"] {
             assert!(
                 help.contains(needle),
-                "Cli long help must mention `{needle}`; got:\n{help}"
+                "`bootroom run --help` must mention `{needle}`; got:\n{help}"
             );
         }
     }
