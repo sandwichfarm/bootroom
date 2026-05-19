@@ -66,7 +66,6 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     io::Read,
-    path::Path,
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
 };
@@ -168,11 +167,28 @@ pub fn spawn_watcher(state: Arc<AppState>) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("kernel_canon has no file name: {}", state.kernel_canon.display()))?
         .to_os_string();
     let config_path: std::path::PathBuf = state.config_path_canon.clone();
+    // CR-03: derive the parent dir + basename for the config too. Watching
+    // the config FILE directly fails the same atomic-rename trap that
+    // motivates watching the kernel's parent dir (Pitfall #2): vim with
+    // `:set writebackup`, VS Code, JetBrains IDEs, `git checkout`, and
+    // any `make`-driven config regenerator all save by writing a sibling
+    // tempfile and renaming it over the target. inotify watches attach
+    // to the inode; after one rename the watch follows the now-orphaned
+    // old inode and every subsequent edit is silently missed.
+    let config_parent: std::path::PathBuf = config_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("config_path_canon has no parent dir: {}", config_path.display()))?
+        .to_path_buf();
+    let config_basename: std::ffi::OsString = config_path
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("config_path_canon has no file name: {}", config_path.display()))?
+        .to_os_string();
 
     let state_for_callback = state.clone();
     let kernel_parent_cb = kernel_parent.clone();
     let kernel_basename_cb = kernel_basename.clone();
-    let config_path_cb = config_path.clone();
+    let config_parent_cb = config_parent.clone();
+    let config_basename_cb = config_basename.clone();
 
     let mut debouncer = new_debouncer(
         DEBOUNCE_WINDOW,
@@ -203,7 +219,15 @@ pub fn spawn_watcher(state: Arc<AppState>) -> anyhow::Result<()> {
                     continue;
                 };
 
-                if paths_equal(target, &config_path_cb) {
+                // CR-03 config demux: same parent dir AND same basename.
+                // Mirrors the kernel demux below. Atomic-rename saves
+                // report the rename with paths in the config's parent
+                // directory; basename equality catches both the in-place
+                // POSIX write (target == config_path) and the rename-over
+                // (a tempfile renamed to the canonical name).
+                if target.parent() == Some(config_parent_cb.as_path())
+                    && target.file_name() == Some(config_basename_cb.as_os_str())
+                {
                     config_dirty = true;
                     continue;
                 }
@@ -230,14 +254,19 @@ pub fn spawn_watcher(state: Arc<AppState>) -> anyhow::Result<()> {
         },
     )?;
 
-    // Watch the config FILE directly (it lives, gets opened-rewritten-renamed
-    // by editors — both POSIX in-place writes and atomic-rename saves fire
-    // events that land on this watch via the parent dir, but the debouncer
-    // surfaces them by the file path).
-    debouncer.watch(&config_path, RecursiveMode::NonRecursive)?;
-    // Watch the PARENT directory of the kernel (Pitfall #2: atomic-rename
-    // safety). `make` writes a sibling tempfile and renames over the target;
-    // the rename only fires events on the parent dir.
+    // CR-03 + Pitfall #2: watch the PARENT directory of both the config
+    // and the kernel (NOT the files directly). inotify watches attach
+    // to the inode; after an atomic-rename save (write tempfile then
+    // rename over target) a file-level watch follows the orphaned old
+    // inode and every subsequent edit is silently missed. Watching the
+    // parent dir captures the rename pair regardless. The callback
+    // demuxes by basename equality.
+    //
+    // Edge case: if `config_parent == kernel_parent` (operator placed
+    // bootroom.toml next to the kernel), `notify`'s debouncer deduplicates
+    // overlapping watches on the same dir — calling `watch` twice for
+    // the same path is idempotent.
+    debouncer.watch(&config_parent, RecursiveMode::NonRecursive)?;
     debouncer.watch(&kernel_parent, RecursiveMode::NonRecursive)?;
 
     // Box::leak: the debouncer owns an OS thread; if dropped the thread
@@ -254,15 +283,6 @@ pub fn spawn_watcher(state: Arc<AppState>) -> anyhow::Result<()> {
     );
 
     Ok(())
-}
-
-/// Compare two paths for equality. Canonical paths are byte-equal when
-/// they refer to the same FS entry on the same filesystem; on macOS the
-/// canonical form may differ in case from the user-supplied form, but
-/// since we canonicalize both at startup (Plan 05) this is a direct
-/// `==` comparison.
-fn paths_equal(a: &Path, b: &Path) -> bool {
-    a == b
 }
 
 /// Handle a debounced kernel-path event. Per RESEARCH Pitfall #4:
