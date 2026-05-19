@@ -7,6 +7,27 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Web-based test harness for RISC-V kernels via qemu-wasm."
+homepage = "https://github.com/sandwich-farm/bootroom"
+documentation = "https://docs.rs/bootroom"
+readme = "../../README.md"
+keywords = ["qemu", "wasm", "riscv", "test-harness", "kernel"]
+categories = ["development-tools::testing", "wasm", "command-line-utilities"]
+publish = true
+include = [
+    "src/**/*.rs",
+    "build.rs",
+    "web/**/*",
+    "assets/qemu/qemu-system-riscv64.wasm",
+    "assets/qemu/qemu-system-riscv64.worker.js",
+    "assets/qemu/qemu-system-riscv64.data",
+    "assets/qemu/out.js",
+    "assets/qemu/load.js",
+    "assets/qemu/module.js",
+    "assets/qemu/qemu-wasm-rev.txt",
+    "../../LICENSE-MIT",
+    "../../LICENSE-APACHE",
+    "../../README.md",
+]
 build = "build.rs"
 
 [lib]
