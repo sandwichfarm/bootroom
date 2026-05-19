@@ -1,19 +1,19 @@
-//! 04-10 — RUN-09 pin: --verbose stderr line shape (ASCII-only,
+//! 04-10 — RUN-09 pin: `--verbose` stderr line shape (ASCII-only,
 //! prefix-glyph contract from 04-06).
 //!
 //! Two paths exist depending on whether the test host has a working
-//! Chromium under /usr/bin/chromium (the second discovery candidate
-//! hard-coded in run_cmd::discover_chromium):
+//! Chromium under `/usr/bin/chromium` (the second discovery candidate
+//! hard-coded in `run_cmd::discover_chromium`):
 //!
 //!   (A) Chromium IS available -> the scenario runs to completion. With
-//!       --verbose, stderr ends with the `final_summary` line:
+//!       `--verbose`, stderr ends with the `final_summary` line:
 //!           "+ scenario smoke: pass"
-//!       or its fail-glyph variant. Without --verbose and on a pass
-//!       verdict, stderr is silent (run_cmd only emits the failure line
+//!       or its fail-glyph variant. Without `--verbose` and on a pass
+//!       verdict, stderr is silent (`run_cmd` only emits the failure line
 //!       on non-pass).
 //!
 //!   (B) Chromium IS NOT available -> the driver exits 3 at the
-//!       discovery step. stderr carries the StartupError diagnostic
+//!       discovery step. stderr carries the `StartupError` diagnostic
 //!       prefixed by `bootroom run: `.
 //!
 //! Both paths share two invariants we pin here:

@@ -3,10 +3,10 @@
 //! Strategy: force a chromium discovery failure (`$CHROMIUM=/nonexistent`
 //! plus a `PATH` that contains no chromium) so the driver exits 3
 //! BEFORE attempting a real headless run, but AFTER writing the
-//! scenario_start preamble. Confirms:
-//!   (a) the file is created at the supplied --log-file path,
-//!   (b) the first line is a valid scenario_start TranscriptEvent,
-//!   (c) every line is valid JSON parsing to a known TranscriptEvent.
+//! `scenario_start` preamble. Confirms:
+//!   (a) the file is created at the supplied `--log-file` path,
+//!   (b) the first line is a valid `scenario_start` `TranscriptEvent`,
+//!   (c) every line is valid JSON parsing to a known `TranscriptEvent`.
 //!
 //! Runtime: < 5s on a typical dev host (no chromium probe, no real
 //! Chromium launch).
