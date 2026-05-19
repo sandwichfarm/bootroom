@@ -392,14 +392,26 @@ export async function runScenario(scenario, actions, deps) {
 
   // Subscribe to master.onWrite. Pitfall #4: capture the Disposable so
   // we can `.dispose()` in `finally`.
+  //
+  // BL-02 fix: do NOT short-circuit on `currentLabel === null`. Pitfall #5
+  // promises that the flat append-only buffer preserves cross-action
+  // line ordering for `after = "any"` — bytes arriving between actions
+  // (e.g. trailing-arrival kernel output after action N's poll resolves
+  // but before action N+1's `currentLabel` assignment) MUST land in
+  // `flat` and in the transcript. Only the per-action `buffers` mutation
+  // is gated on `currentLabel`, because that map's keys are action
+  // labels and "between actions" has no meaningful label.
+  const BETWEEN_LABEL = '<between>';
   const disposable = master.onWrite(([bytes, _ack]) => {
     if (!bytes || bytes.length === 0) return;
-    if (currentLabel === null) return;
-    // Per-action buffer — ALWAYS append (assertion evaluation needs this).
-    const chunks = buffers.get(currentLabel) || [];
-    chunks.push(new Uint8Array(bytes));
-    buffers.set(currentLabel, chunks);
-    // Secondary flat buffer — ALWAYS append (for `after = "any"`).
+    // Per-action buffer — only meaningful while an action is active.
+    if (currentLabel !== null) {
+      const chunks = buffers.get(currentLabel) || [];
+      chunks.push(new Uint8Array(bytes));
+      buffers.set(currentLabel, chunks);
+    }
+    // Secondary flat buffer — ALWAYS append (Pitfall #5: preserves
+    // cross-action line ordering for `after = "any"`).
     flat.push(new Uint8Array(bytes));
     // Transcript serial_chunk — append until the cumulative cap.
     if (transcriptOverflowed) {
@@ -422,7 +434,10 @@ export async function runScenario(scenario, actions, deps) {
     transcript.push({
       ts: nowIsoUtc(),
       type: 'serial_chunk',
-      action: currentLabel,
+      // Tag inter-action bytes with `<between>` so the JSONL transcript
+      // stays parseable; the Rust deserializer treats this as an
+      // opaque string.
+      action: currentLabel !== null ? currentLabel : BETWEEN_LABEL,
       bytes_b64: b64,
     });
   });
@@ -562,9 +577,10 @@ export async function runScenario(scenario, actions, deps) {
         }
 
         // Reset currentLabel between actions so trailing-arrival chunks
-        // do NOT pollute the next action's buffer (they still flow
-        // into `flat` for `after="any"` — but only while a current
-        // action label is set; between actions both are paused).
+        // do NOT pollute the next action's PER-ACTION buffer. They DO
+        // still flow into `flat` (Pitfall #5: cross-action line order
+        // preserved for `after = "any"`) and into the transcript with
+        // an `<between>` action tag — see BL-02 fix in onWrite above.
         currentLabel = null;
       }
     };
