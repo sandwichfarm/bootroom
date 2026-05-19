@@ -16,5 +16,17 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
         Cmd::Serve(args) => bootroom::server::run(args).await,
+        Cmd::Check(args) => {
+            // Plan 04 wires real handlers; placeholder until then.
+            // Exit code 2 (file-not-found-class) so any accidental CI use
+            // during the Plan 03 -> Plan 04 window fails loudly.
+            let _ = args;
+            std::process::exit(2);
+        }
+        Cmd::Init(args) => {
+            // Plan 04 wires real handlers; placeholder until then.
+            let _ = args;
+            std::process::exit(1);
+        }
     }
 }

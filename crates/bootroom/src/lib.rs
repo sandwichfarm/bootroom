@@ -13,6 +13,6 @@ pub mod state;
 pub mod ws;
 
 // Re-export the surface tests will use.
-pub use cli::ServeArgs;
+pub use cli::{CheckArgs, Cli, Cmd, InitArgs, ServeArgs};
 pub use server::build_router;
 pub use state::AppState;

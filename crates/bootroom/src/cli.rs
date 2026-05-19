@@ -170,7 +170,7 @@ mod tests {
         // EscapeError::Display says "unknown escape"; we also prefix with
         // the label so the operator knows which --action failed.
         assert!(
-            err.contains("unknown escape") || err.contains("x"),
+            err.contains("unknown escape") || err.contains('x'),
             "expected unknown-escape error or label 'x' in error, got: {err}"
         );
     }
