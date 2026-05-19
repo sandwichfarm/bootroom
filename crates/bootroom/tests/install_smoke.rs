@@ -22,9 +22,11 @@
 //!   `/tmp` to exercise path-independence at the exit-status + overall=pass
 //!   level.
 //! - `path_independence_qemu_wasm_rev_present` — DIST-05 strict gate: from
-//!   `/tmp`, asserts the `qemu_wasm_rev` check status is `"pass"` (and the
-//!   top-level value, if exposed, is non-empty and not the degraded
-//!   `"unknown"` sentinel). This is the runtime backstop for the
+//!   `/tmp`, asserts the `qemu_wasm_rev` check status is `"info"` (the
+//!   documented contract for `check_qemu_rev` in doctor_cmd.rs — the
+//!   embedded rev is always informational, never pass/fail) AND that the
+//!   check's detail string contains a real revision, not the degraded
+//!   `"unknown"` sentinel. This is the runtime backstop for the
 //!   `[package].include` allow-list (06-02) and `include_dir!` reachability.
 
 use std::process::Command;
@@ -113,10 +115,34 @@ fn path_independence_qemu_wasm_rev_present() {
         .and_then(|s| s.as_str())
         .expect("qemu_wasm_rev check has no status");
 
+    // CR-03: doctor's `check_qemu_rev` is documented to always return
+    // CheckStatus::Info (the embedded rev is informational; it is never
+    // a pass/fail signal on its own). The previous `"pass"` assertion
+    // was structurally unreachable and would block every release.
     assert_eq!(
-        rev_status, "pass",
-        "qemu_wasm_rev status was {:?}, expected \"pass\". A non-pass status here usually means the qemu-wasm-rev.txt file is missing from the published crate (regression of 06-02's [package].include allow-list).\nFull JSON: {}",
+        rev_status, "info",
+        "qemu_wasm_rev status was {:?}, expected \"info\" (the documented contract for check_qemu_rev — see crates/bootroom/src/doctor_cmd.rs::check_qemu_rev).\nFull JSON: {}",
         rev_status, parsed
+    );
+
+    // The real DIST-05 signal: the embedded qemu-wasm-rev.txt must have
+    // shipped inside the published crate. A regression of the
+    // `[package].include` allow-list (06-02) or `include_dir!`
+    // reachability would degrade the detail string to the literal
+    // sentinel "rev unknown".
+    let rev_detail = rev_check
+        .get("detail")
+        .and_then(|d| d.as_str())
+        .expect("qemu_wasm_rev check has no detail");
+    assert!(
+        rev_detail.starts_with("qemu-wasm rev "),
+        "qemu_wasm_rev detail has unexpected shape: {:?}",
+        rev_detail
+    );
+    assert!(
+        !rev_detail.contains("rev unknown"),
+        "qemu_wasm_rev detail is the documented degraded value 'rev unknown', meaning the embedded asset bundle did not ship: {}",
+        rev_detail
     );
 
     // Also confirm the top-level qemu_wasm_rev field (if doctor exposes it
