@@ -3,6 +3,7 @@
 //! The binary entrypoint lives in `main.rs`; everything reusable lives here.
 
 pub mod assets;
+pub mod check_cmd;
 pub mod cli;
 pub mod embed;
 pub mod headers;
@@ -10,6 +11,7 @@ pub mod kernel_info;
 pub mod kernel_stream;
 pub mod server;
 pub mod state;
+pub mod watcher;
 pub mod ws;
 
 // Re-export the surface tests will use.
