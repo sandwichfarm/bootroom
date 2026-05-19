@@ -13,7 +13,7 @@
 
 use bootroom_core::config::CliAction;
 use bootroom_core::decode_bytes_escape;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Web-based test harness for RISC-V kernels via qemu-wasm.
@@ -42,6 +42,12 @@ pub enum Cmd {
 
     /// Write a starter bootroom.toml to the current directory.
     Init(InitArgs),
+
+    /// Run preflight checks (version, browser, headers, config).
+    ///
+    /// Exits 0 when all required checks pass; 1 otherwise. Designed for
+    /// CI preflight steps and operator self-diagnosis before filing bugs.
+    Doctor(DoctorArgs),
 }
 
 /// Common flags shared across `serve` and `run` (CLI-02).
@@ -139,6 +145,23 @@ pub struct InitArgs {
     /// Overwrite an existing bootroom.toml.
     #[arg(long)]
     pub force: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct DoctorArgs {
+    /// Path to bootroom.toml; default = ./bootroom.toml. Missing file is informational, not a failure.
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+
+    /// Output format: human (default) or json (stable schema_version=1).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OutputFormat {
+    Human,
+    Json,
 }
 
 /// Clap value-parser for `--action LABEL=BYTES`.
@@ -524,5 +547,27 @@ mod tests {
             msg.contains("action") || msg.contains("unexpected") || msg.contains("unrecognized"),
             "error must surface the unknown --action arg; got: {msg}"
         );
+    }
+
+    // ----- Plan 05-03 tests: Cmd::Doctor(DoctorArgs) + OutputFormat -----
+
+    #[test]
+    fn doctor_subcommand_parses_with_format_flag() {
+        let cli = Cli::try_parse_from([
+            "bootroom", "doctor", "--format", "json", "--config", "/tmp/x.toml",
+        ]).expect("doctor with --format json --config parses");
+        let Cmd::Doctor(args) = cli.cmd else {
+            panic!("expected Cmd::Doctor, got {:?}", cli.cmd);
+        };
+        assert!(matches!(args.format, OutputFormat::Json));
+        assert_eq!(args.config.as_deref(), Some(std::path::Path::new("/tmp/x.toml")));
+    }
+
+    #[test]
+    fn doctor_subcommand_defaults_to_human_and_no_config() {
+        let cli = Cli::try_parse_from(["bootroom", "doctor"]).expect("bare doctor parses");
+        let Cmd::Doctor(args) = cli.cmd else { panic!("expected Cmd::Doctor"); };
+        assert!(matches!(args.format, OutputFormat::Human));
+        assert!(args.config.is_none());
     }
 }
